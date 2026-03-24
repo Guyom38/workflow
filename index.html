@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS — Workflow sans titre</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="flex flex-col h-screen w-full m-0">
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     BARRE D'OUTILS PRINCIPALE
+══════════════════════════════════════════════════════════════════════════ -->
+<header class="bg-slate-900 border-b border-slate-800 p-2 flex justify-between items-center z-10 shadow-lg flex-wrap gap-y-2">
+
+    <!-- Logo + Nom du workflow -->
+    <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 text-blue-400 font-bold text-lg tracking-wider">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-pulse">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+            NEXUS
+        </div>
+        <div class="hidden sm:flex items-center gap-1 border-l border-slate-700 pl-3">
+            <span id="workflow-name-display" class="text-slate-300 text-sm font-medium truncate max-w-[200px]">Workflow sans titre</span>
+        </div>
+    </div>
+
+    <!-- Groupe Fichier + Actions -->
+    <div class="flex items-center gap-1.5 flex-wrap">
+
+        <!-- Nouveau -->
+        <button onclick="newWorkflow()"
+            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
+            title="Nouveau workflow">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line>
+            </svg>
+            Nouveau
+        </button>
+
+        <!-- Charger (dropdown workflows récents) -->
+        <div class="relative">
+            <button onclick="openLoadMenu()" data-dropdown-trigger
+                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
+                title="Charger un workflow">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                Charger
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+
+            <div id="recent-workflows-menu" class="dropdown-menu hidden" style="min-width:280px;">
+                <div class="px-3 py-1.5 text-[0.7rem] text-slate-500 uppercase font-bold tracking-wider border-b border-slate-700 mb-1">
+                    Workflows récents
+                </div>
+                <div id="recent-list" class="max-h-56 overflow-y-auto"></div>
+                <div class="dropdown-separator"></div>
+                <div class="dropdown-item text-blue-400" onclick="loadFromFile()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Ouvrir un fichier .json…
+                </div>
+            </div>
+        </div>
+
+        <!-- Enregistrer -->
+        <button onclick="saveWorkflow()"
+            class="px-3 py-1.5 bg-blue-800 hover:bg-blue-700 border border-blue-600 text-blue-200 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
+            title="Enregistrer le workflow">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            Enregistrer
+        </button>
+
+        <!-- Exporter (dropdown) -->
+        <div class="relative">
+            <button onclick="openExportMenu()" data-dropdown-trigger
+                class="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 border border-emerald-600 text-emerald-200 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
+                title="Exporter le workflow">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Exporter
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+
+            <div id="export-menu" class="dropdown-menu hidden">
+                <div class="px-3 py-1.5 text-[0.7rem] text-slate-500 uppercase font-bold tracking-wider border-b border-slate-700 mb-1">
+                    Format d'export
+                </div>
+                <div class="dropdown-item text-yellow-300" onclick="exportPython()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+                    </svg>
+                    Script Python (.py)
+                </div>
+                <div class="dropdown-item text-orange-300" onclick="exportSetupBat()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    Setup environnement (.bat)
+                </div>
+                <div class="dropdown-separator"></div>
+                <div class="dropdown-item text-slate-300" onclick="exportJSON()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    Workflow JSON (.json)
+                </div>
+            </div>
+        </div>
+
+        <div class="h-6 w-px bg-slate-700 mx-1"></div>
+
+        <!-- Organiser -->
+        <button onclick="mainEditor.autoLayout()"
+            class="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 border border-indigo-700 text-indigo-300 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
+            title="Réorganisation automatique">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+            Organiser
+        </button>
+
+        <!-- Grouper (visible seulement si ≥2 nœuds sélectionnés) -->
+        <button id="btn-group-nodes" onclick="mainEditor.groupSelection()"
+            class="px-3 py-1.5 bg-orange-700 hover:bg-orange-600 text-white rounded text-sm transition-colors hidden flex items-center gap-1.5 animate-pulse">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            </svg>
+            Grouper
+        </button>
+
+        <div class="h-6 w-px bg-slate-700 mx-1"></div>
+
+        <!-- Grille / Snap -->
+        <button id="btn-grid" onclick="mainEditor.toggleGrid('btn-grid')"
+            class="p-2 bg-blue-900 border border-blue-500 text-blue-300 rounded hover:bg-blue-800 transition"
+            title="Afficher/Masquer la grille">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line>
+                <line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line>
+            </svg>
+        </button>
+        <button id="btn-snap" onclick="mainEditor.toggleSnap('btn-snap')"
+            class="p-2 bg-purple-900 border border-purple-500 text-purple-300 rounded hover:bg-purple-800 transition"
+            title="Magnétisme (Snap to Grid)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
+                <path d="M3 15h16a2 2 0 0 1 0 4H3v-4z"></path>
+            </svg>
+        </button>
+
+    </div>
+</header>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ESPACE DE TRAVAIL PRINCIPAL
+══════════════════════════════════════════════════════════════════════════ -->
+<main class="flex-1 relative overflow-hidden" id="main-workspace">
+    <div class="absolute w-[5000px] h-[5000px] left-[-2500px] top-[-2500px] pointer-events-none workspace-bg"></div>
+    <div class="absolute w-0 h-0 canvas-layer" style="transform: translate(50vw, 50vh) scale(1);">
+        <svg class="absolute overflow-visible pointer-events-none svg-layer" style="z-index:10;">
+            <g class="links-layer"></g>
+            <path class="link-path dragging temp-link-path" style="display:none;"></path>
+        </svg>
+        <div class="absolute nodes-layer" style="z-index:20;"></div>
+    </div>
+
+    <!-- Mini-carte -->
+    <div id="minimap-panel" class="absolute bottom-4 right-4 z-50 rounded-lg border border-slate-700 shadow-2xl overflow-hidden select-none" style="width:216px;background:rgba(8,12,22,0.92);backdrop-filter:blur(8px);">
+        <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-700/80" style="background:rgba(15,23,42,0.9);">
+            <div class="flex items-center gap-1.5">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-500">
+                    <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect>
+                </svg>
+                <span class="text-[0.6rem] text-slate-400 font-bold uppercase tracking-widest">Mini-carte</span>
+            </div>
+            <button id="minimap-toggle" title="Masquer"
+                class="text-slate-500 hover:text-white p-0.5 rounded hover:bg-slate-700 transition-colors">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>
+            </button>
+        </div>
+        <div id="minimap-body">
+            <canvas id="minimap-canvas" width="216" height="144" style="display:block;width:216px;height:144px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Panneau flottant gauche : aide + palette de nœuds -->
+    <div class="absolute top-4 left-4 z-50 flex flex-col gap-2 pointer-events-none">
+
+        <div class="text-xs text-slate-400 bg-slate-900/80 p-2 rounded-lg border border-slate-700 backdrop-blur-md shadow-lg">
+            <span class="font-bold text-slate-300">Clic Milieu / Alt+Clic</span> : Panoramique &nbsp;|&nbsp; <span class="font-bold text-slate-300">Molette</span> : Zoom<br>
+            <span class="font-bold text-slate-300">Glisser</span> : Sélection &nbsp;|&nbsp; <span class="font-bold text-slate-300">Shift+Clic</span> : Multi-sélection
+        </div>
+
+        <div class="flex flex-col gap-1 pointer-events-auto w-44">
+            <button onclick="mainEditor.addNode('start')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-green-900/30 border border-slate-700 hover:border-green-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#16a34a,#15803d)"></span>
+                Départ
+            </button>
+            <button onclick="mainEditor.addNode('python')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-yellow-900/30 border border-slate-700 hover:border-yellow-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#ca8a04,#a16207)"></span>
+                Script Python
+            </button>
+            <button onclick="mainEditor.addNode('api')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-teal-900/30 border border-slate-700 hover:border-teal-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#0d9488,#0f766e)"></span>
+                Requête API
+            </button>
+            <button onclick="mainEditor.addNode('operator')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-blue-900/30 border border-slate-700 hover:border-blue-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#2563eb,#1d4ed8)"></span>
+                Opérateur
+            </button>
+            <button onclick="mainEditor.addNode('timing')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-pink-900/30 border border-slate-700 hover:border-pink-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#db2777,#be185d)"></span>
+                Temporisation
+            </button>
+            <button onclick="mainEditor.addNode('condition')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-purple-900/30 border border-slate-700 hover:border-purple-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#7c3aed,#6d28d9)"></span>
+                Condition (SI)
+            </button>
+            <button onclick="mainEditor.addNode('subflow')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-orange-900/30 border border-slate-700 hover:border-orange-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#ea580c,#c2410c)"></span>
+                Sous-Processus
+            </button>
+            <button onclick="mainEditor.addNode('loop')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-cyan-900/30 border border-slate-700 hover:border-cyan-600 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#0891b2,#0e7490)"></span>
+                Boucle (forEach)
+            </button>
+            <button onclick="mainEditor.addNode('variable')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-pink-900/30 border border-slate-700 hover:border-pink-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#be185d,#9d174d)"></span>
+                Variable
+            </button>
+            <button onclick="mainEditor.addNode('note')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-slate-700/50 border border-slate-700 hover:border-slate-500 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#475569,#334155)"></span>
+                Note / Groupe
+            </button>
+        </div>
+    </div>
+</main>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     FOOTER : BARRE DE STATUT
+══════════════════════════════════════════════════════════════════════════ -->
+<footer class="bg-[#080b13] border-t border-slate-800 px-4 py-1.5 z-10 flex items-center justify-between gap-4 text-[0.7rem] font-mono select-none">
+
+    <!-- Gauche : compteurs nœuds / liens / scripts -->
+    <div class="flex items-center gap-4 text-slate-500">
+        <span class="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-blue-500">
+                <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span id="stat-nodes" class="text-slate-300">0</span> nœuds
+        </span>
+        <span class="text-slate-700">|</span>
+        <span class="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-purple-500">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+            <span id="stat-links" class="text-slate-300">0</span> liens
+        </span>
+        <span class="text-slate-700">|</span>
+        <span class="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-yellow-500">
+                <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+            <span id="stat-scripts" class="text-slate-300">0</span> scripts chargés
+        </span>
+    </div>
+
+    <!-- Centre : statut autosave -->
+    <div class="flex items-center gap-2">
+        <div id="stat-save-dot" class="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+        <span id="stat-save-label" class="text-slate-500">Aucune sauvegarde</span>
+    </div>
+
+    <!-- Droite : zoom -->
+    <div class="flex items-center gap-3 text-slate-500">
+        <span class="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400">
+                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            Zoom : <span id="stat-zoom" class="text-slate-300 ml-1">100%</span>
+        </span>
+        <span class="text-slate-700">|</span>
+        <button onclick="mainEditor && mainEditor.resetCamera()" class="text-slate-500 hover:text-slate-300 transition-colors">Recentrer</button>
+    </div>
+</footer>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL SOUS-PROCESSUS
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="subflow-modal" class="fixed inset-0 z-[100] hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8">
+    <div class="bg-[var(--bg-color)] w-full h-full rounded-xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden">
+
+        <header class="bg-slate-900 border-b border-slate-800 p-2 flex justify-between items-center z-10 shadow-md">
+            <div class="flex items-center gap-2 text-sm">
+                <button onclick="closeSubflowModal()" class="text-slate-400 hover:text-white transition flex items-center gap-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                    Processus Principal
+                </button>
+                <span class="text-slate-600 font-bold">›</span>
+                <span class="text-orange-400 font-bold" id="modal-breadcrumb-current">Sous-Processus</span>
+            </div>
+            <div class="flex gap-2 items-center">
+                <button onclick="modalEditor && modalEditor.autoLayout()"
+                    class="px-2 py-1 bg-emerald-800 hover:bg-emerald-700 border border-emerald-600 rounded text-xs text-white transition flex items-center gap-1">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                    Auto
+                </button>
+                <button onclick="closeSubflowModal()" class="text-slate-400 hover:text-red-400 transition ml-1" title="Fermer">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 relative overflow-hidden" id="modal-workspace">
+            <div class="absolute w-[5000px] h-[5000px] left-[-2500px] top-[-2500px] pointer-events-none workspace-bg"></div>
+            <div class="absolute w-0 h-0 canvas-layer" style="transform: translate(50vw, 50vh) scale(1);">
+                <svg class="absolute overflow-visible pointer-events-none svg-layer" style="z-index:10;">
+                    <g class="links-layer"></g>
+                    <path class="link-path dragging temp-link-path" style="display:none;"></path>
+                </svg>
+                <div class="absolute nodes-layer" style="z-index:20;"></div>
+            </div>
+
+            <!-- Palette modale -->
+            <div class="absolute top-4 left-4 z-50 flex flex-col gap-1.5 pointer-events-auto w-40">
+                <button onclick="modalEditor && modalEditor.addNode('start')"
+                    class="px-3 py-2 bg-slate-900/80 hover:bg-green-900/80 border border-slate-700 hover:border-green-500 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Départ</button>
+                <button onclick="modalEditor && modalEditor.addNode('python')"
+                    class="px-3 py-2 bg-slate-900/80 hover:bg-yellow-900/80 border border-slate-700 hover:border-yellow-500 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Script Python</button>
+                <button onclick="modalEditor && modalEditor.addNode('condition')"
+                    class="px-3 py-2 bg-slate-900/80 hover:bg-purple-900/80 border border-slate-700 hover:border-purple-500 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Condition (SI)</button>
+                <button onclick="modalEditor && modalEditor.addNode('loop')"
+                    class="px-3 py-2 bg-slate-900/80 hover:bg-cyan-900/80 border border-slate-700 hover:border-cyan-600 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Boucle</button>
+                <button onclick="modalEditor && modalEditor.addNode('variable')"
+                    class="px-3 py-2 bg-slate-900/80 hover:bg-pink-900/80 border border-slate-700 hover:border-pink-700 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Variable</button>
+                <button onclick="modalEditor && modalEditor.addNode('note')"
+                    class="px-3 py-2 bg-slate-900/80 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Note</button>
+            </div>
+        </main>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ÉLÉMENTS UTILITAIRES
+══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Input fichier workflow (caché) -->
+<input type="file" id="file-input-workflow" class="hidden" accept=".json,.nexus.json">
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL PARAMÈTRES DE BRIQUE
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="param-modal" class="fixed inset-0 z-[300] hidden bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 w-full max-w-md max-h-[85vh] rounded-xl border border-slate-700 shadow-2xl flex flex-col">
+
+        <!-- En-tête -->
+        <header class="p-4 border-b border-slate-700 flex justify-between items-start gap-3">
+            <div>
+                <h2 id="pm-title" class="text-white font-bold text-base">Paramètres</h2>
+                <p id="pm-node-name" class="text-slate-400 text-xs mt-0.5 font-mono truncate max-w-[300px]"></p>
+            </div>
+            <button onclick="closeParamModal()"
+                class="text-slate-400 hover:text-white transition-colors mt-0.5 p-1 hover:bg-slate-700 rounded">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </header>
+
+        <!-- Corps scrollable -->
+        <div id="pm-body" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3"></div>
+
+        <!-- Pied -->
+        <footer class="p-3 border-t border-slate-700 flex justify-end gap-2">
+            <button onclick="closeParamModal()"
+                class="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded text-sm transition-colors">
+                Fermer
+            </button>
+            <button id="pm-save-btn" onclick="saveParamValues()"
+                class="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-sm transition-colors font-medium">
+                Appliquer
+            </button>
+        </footer>
+    </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="opacity-0 translate-y-2">Message</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL ACTION (confirmation / info)
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="action-modal" class="fixed inset-0 z-[400] hidden flex items-center justify-center p-4">
+    <div id="am-backdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative bg-slate-900 rounded-xl border border-slate-700 shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+        <div class="p-5 flex gap-4 items-start">
+            <div id="am-icon" class="shrink-0 mt-0.5"></div>
+            <div class="flex-1 min-w-0">
+                <h3 id="am-title" class="text-white font-bold text-base mb-1"></h3>
+                <p id="am-body" class="text-slate-400 text-sm whitespace-pre-wrap"></p>
+            </div>
+        </div>
+        <div class="px-5 pb-4 flex justify-end gap-2">
+            <button id="am-cancel"
+                class="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded text-sm transition-colors">
+                Annuler
+            </button>
+            <button id="am-confirm"
+                class="px-4 py-1.5 bg-red-700 hover:bg-red-600 text-white rounded text-sm transition-colors font-medium hidden">
+                Confirmer
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL INFO VARIABLE
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="var-info-modal" class="fixed inset-0 z-[400] hidden flex items-center justify-center p-4">
+    <div id="vim-backdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative bg-slate-900 rounded-xl border border-slate-700 shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+        <header class="px-5 pt-4 pb-3 border-b border-slate-700 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-pink-400 shrink-0">
+                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <h3 class="text-white font-bold text-sm">Description de la variable</h3>
+        </header>
+        <div class="p-4">
+            <textarea id="vim-description" rows="4"
+                class="w-full bg-slate-800 border border-slate-600 focus:border-pink-500 outline-none rounded-lg p-3 text-slate-300 text-sm resize-none"
+                placeholder="Décrivez l'utilité de cette variable…"></textarea>
+        </div>
+        <div class="px-4 pb-4 flex justify-end gap-2">
+            <button id="vim-cancel"
+                class="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded text-sm transition-colors">
+                Annuler
+            </button>
+            <button id="vim-save"
+                class="px-4 py-1.5 bg-pink-700 hover:bg-pink-600 text-white rounded text-sm transition-colors font-medium">
+                Enregistrer
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SCRIPTS (ordre important)
+══════════════════════════════════════════════════════════════════════════ -->
+<script src="js/config.js"></script>
+<script src="js/ScriptParser.js"></script>
+<script src="js/Storage.js"></script>
+<script src="js/Exporter.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/WorkflowEditor/core.js"></script>
+<script src="js/WorkflowEditor/nodes.js"></script>
+<script src="js/WorkflowEditor/links.js"></script>
+<script src="js/WorkflowEditor/builders.js"></script>
+<script src="js/WorkflowEditor/python.js"></script>
+<script src="js/WorkflowEditor/events.js"></script>
+<script src="js/WorkflowEditor/subflow.js"></script>
+<script src="js/minimap.js"></script>
+<script src="js/StatusBar.js"></script>
+<script src="js/ParamModal.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

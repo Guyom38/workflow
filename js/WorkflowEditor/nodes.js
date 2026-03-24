@@ -1,0 +1,386 @@
+/** NEXUS - WorkflowEditor / nodes.js — Gestion des nœuds, sérialisation, layout, sélection, canvas */
+Object.assign(WorkflowEditor.prototype, {
+
+    // ── Démo ─────────────────────────────────────────────────────────────────
+
+    buildDemoScene() {
+        this._historyPaused = true;
+        const n5 = this.createNode('note',      -450, -220);
+        const n1 = this.createNode('start',     -400, -100);
+        const n2 = this.createNode('python',    -100, -120);
+        const n3 = this.createNode('condition',  200, -100);
+        const n4 = this.createNode('api',        450, -150);
+        const n6 = this.createNode('subflow',    150,  100);
+
+        setTimeout(() => {
+            const noteEl = this.nodesContainer.querySelector(`#node-${n5}`);
+            if (noteEl) { noteEl.style.width = '650px'; noteEl.style.height = '350px'; this.nodesContainer.prepend(noteEl); }
+            const ta = this.nodesContainer.querySelector(`#node-${n5} textarea`);
+            if (ta) ta.value = " GROUPE : Pipeline de traitement\n\n 1. Déclenchement automatique.\n 2. Charger un script .py sur le nœud Python.\n 3. Utiliser Exporter → Script Python pour générer le workflow.";
+        }, 100);
+
+        this.createLink(n1, 'out',      n2, 'in_trig');
+        this.createLink(n2, 'out_trig', n3, 'in');
+        this.createLink(n3, 't',        n4, 'in');
+        this.createLink(n2, 'out_data', n6, 'in_a');
+        this._historyPaused = false;
+        this._saveSnapshot();
+    },
+
+    // ── Ajout / Création ─────────────────────────────────────────────────────
+
+    addNode(type) {
+        const spec = NODE_TYPES[type];
+        const nodeW = spec?.width || 200;
+        // Centre horizontal de la zone visible, aligné sous la barre d'outils
+        const x = (-this.camera.x + this.workspace.clientWidth  / 2) / this.camera.zoom - nodeW / 2;
+        const y = (-this.camera.y + 24) / this.camera.zoom;
+        this.createNode(type, x, y);
+        this._notifyChange();
+    },
+
+    _duplicateNode(id) {
+        const src = this.nodes[id];
+        if (!src) return;
+        const offset = 40 / this.camera.zoom;
+        const newId = this.createNode(src.type, src.x + offset, src.y + offset, null, { ...src });
+        // Les sous-processus dupliqués partagent le même subflowJSON (même workflow interne)
+        if (newId && src.subflowJSON) this.nodes[newId].subflowJSON = src.subflowJSON;
+        this._notifyChange();
+    },
+
+    createNode(type, x, y, forcedId = null, extraData = null) {
+        const id   = forcedId || generateId();
+        const spec = NODE_TYPES[type];
+        if (!spec) return null;
+
+        if (this.settings.snap) {
+            x = Math.round(x / this.settings.snapSize) * this.settings.snapSize;
+            y = Math.round(y / this.settings.snapSize) * this.settings.snapSize;
+        }
+
+        this.nodes[id] = {
+            id, type, x, y,
+            disabled:       false,
+            portsHidden:    extraData?.portsHidden ?? true,
+            label:          extraData?.label          || '',
+            scriptName:     extraData?.scriptName     || '',
+            scriptContent:  extraData?.scriptContent  || '',
+            scriptMeta:     extraData?.scriptMeta     || null,
+            varName:        extraData?.varName        || 'maVariable',
+            varType:        extraData?.varType        || 'string',
+            varValue:       extraData?.varValue       ?? '',
+            varDescription: extraData?.varDescription || '',
+            noteTitle:      extraData?.noteTitle      || 'ZONE DE NOTE',
+            noteColor:      extraData?.noteColor      || '#64748b',
+            noteBg:         extraData?.noteBg         || 'rgba(100,116,139,0.18)',
+            subflowPorts:      extraData?.subflowPorts      ?? null,
+            subflowJSON:       extraData?.subflowJSON        ?? null,
+            subflowStartPorts: extraData?.subflowStartPorts ?? null,
+            subflowEndPorts:   extraData?.subflowEndPorts   ?? null,
+        };
+
+        const el = document.createElement('div');
+        el.className = `node absolute rounded-lg border border-[var(--node-border)] bg-[var(--node-bg)] flex flex-col`;
+        el.id        = `node-${id}`;
+        el.style.width     = `${spec.width}px`;
+        el.style.transform = `translate(${x}px, ${y}px)`;
+
+        if (spec.shape === 'circle') {
+            el.className = `node absolute node-loop`;
+            el.style.height = `${spec.width}px`;
+        }
+
+        if (type !== 'note' && spec.shape !== 'circle' && spec.stripe) {
+            const stripe = document.createElement('div');
+            stripe.className = 'node-stripe';
+            stripe.style.background = spec.stripe;
+            el.appendChild(stripe);
+        }
+
+        if (type === 'note') {
+            el.classList.add('node-note');
+            el.style.minHeight = '150px';
+            const nd = this.nodes[id];
+            el.style.setProperty('--note-accent', nd.noteColor);
+            el.style.background = nd.noteBg;
+            el.innerHTML = this._buildNoteHTML(id, nd.noteTitle, nd.noteColor);
+        } else if (spec.shape === 'circle') {
+            el.innerHTML = this._buildLoopNodeHTML(id);
+        } else {
+            el.innerHTML = this._buildNodeHTML(id, type, spec, extraData);
+        }
+
+        if (type === 'note') this.nodesContainer.prepend(el);
+        else                 this.nodesContainer.appendChild(el);
+        this._attachNodeEvents(el, id);
+
+        if (type === 'python' && extraData?.scriptMeta) {
+            this._refreshPythonNodeUI(id, extraData.scriptMeta, extraData.scriptName || '');
+        }
+
+        this._updatePortVisibility(id);
+        return id;
+    },
+
+    deleteNode(id) {
+        this.links = this.links.filter(l => l.fromNode !== id && l.toNode !== id);
+        this.renderLinks();
+        const el = this.nodesContainer.querySelector(`#node-${id}`);
+        if (el) el.remove();
+        delete this.nodes[id];
+        this.selectedNodes.delete(id);
+        this._updateSelectionState();
+        this._notifyChange();
+    },
+
+    toggleNodeDisable(id) {
+        this.nodes[id].disabled = !this.nodes[id].disabled;
+        const el        = this.nodesContainer.querySelector(`#node-${id}`);
+        const toggleBtn = el?.querySelector('.toggle-disable');
+        if (this.nodes[id].disabled) {
+            el?.classList.add('disabled');
+            if (toggleBtn) toggleBtn.innerText = 'Activer';
+        } else {
+            el?.classList.remove('disabled');
+            if (toggleBtn) toggleBtn.innerText = 'Désactiver';
+        }
+        this._notifyChange();
+    },
+
+    // ── Sérialisation ─────────────────────────────────────────────────────────
+
+    toJSON(name = 'Workflow sans titre') {
+        const nodesData = {};
+        Object.values(this.nodes).forEach(node => {
+            const el = this.nodesContainer.querySelector(`#node-${node.id}`);
+            let label = node.label;
+            if (el) {
+                const labelInput = el.querySelector('.node-label-input');
+                if (labelInput) label = labelInput.value;
+            }
+            nodesData[node.id] = { ...node, label };
+        });
+        return { version: APP_VERSION, id: this.id, name, savedAt: new Date().toISOString(), nodes: nodesData, links: this.links };
+    },
+
+    fromJSON(data) {
+        this._historyPaused = true;
+        this.clearAll();
+        if (data.id) this.id = data.id;
+        Object.values(data.nodes || {}).forEach(nd => {
+            this.createNode(nd.type, nd.x, nd.y, nd.id, nd);
+            if (nd.disabled) this.toggleNodeDisable(nd.id);
+        });
+        (data.links || []).forEach(l => this.createLink(l.fromNode, l.fromPort, l.toNode, l.toPort));
+        this._historyPaused = false;
+        this._saveSnapshot();
+    },
+
+    // ── Auto-layout ───────────────────────────────────────────────────────────
+
+    autoLayout() {
+        const adjacency = {}, inDegree = {};
+        Object.keys(this.nodes).forEach(id => { adjacency[id] = []; inDegree[id] = 0; });
+        this.links.forEach(l => {
+            if (adjacency[l.fromNode] && inDegree[l.toNode] !== undefined) {
+                adjacency[l.fromNode].push(l.toNode); inDegree[l.toNode]++;
+            }
+        });
+
+        const layers = [];
+        let current  = Object.keys(inDegree).filter(id => inDegree[id] === 0);
+        const visited = new Set(current);
+        while (current.length > 0) {
+            layers.push(current);
+            const next = [];
+            current.forEach(nid => adjacency[nid].forEach(tid => {
+                inDegree[tid]--;
+                if (inDegree[tid] <= 0 && !visited.has(tid)) { visited.add(tid); next.push(tid); }
+            }));
+            current = next;
+        }
+        const unvisited = Object.keys(this.nodes).filter(id => !visited.has(id));
+        if (unvisited.length) layers.push(unvisited);
+
+        const marginX = 350, marginY = 220;
+        const centerX = -this.camera.x / this.camera.zoom + (this.workspace.clientWidth  / 2) / this.camera.zoom;
+        const centerY = -this.camera.y / this.camera.zoom + (this.workspace.clientHeight / 2) / this.camera.zoom;
+        const startX  = centerX - (Math.max(0, layers.length - 1) * marginX / 2);
+
+        layers.forEach((layer, li) => {
+            const x = startX + li * marginX;
+            let cy  = centerY - (Math.max(0, layer.length - 1) * marginY / 2);
+            layer.forEach(nid => {
+                const node = this.nodes[nid]; if (!node) return;
+                node.x = x; node.y = cy;
+                const el = this.nodesContainer.querySelector(`#node-${nid}`);
+                if (el) {
+                    el.style.transition = 'transform 0.5s cubic-bezier(0.2,0.8,0.2,1)';
+                    el.style.transform  = `translate(${node.x}px,${node.y}px)`;
+                    setTimeout(() => { el.style.transition = ''; }, 550);
+                }
+                cy += marginY;
+            });
+        });
+
+        let animStart = null;
+        const anim = (ts) => {
+            if (!animStart) animStart = ts;
+            this.renderLinks();
+            if (ts - animStart < 500) requestAnimationFrame(anim);
+            else this.renderLinks();
+        };
+        requestAnimationFrame(anim);
+    },
+
+    // ── Sélection ─────────────────────────────────────────────────────────────
+
+    clearSelection() {
+        this.selectedNodes.forEach(id => {
+            const el = this.nodesContainer.querySelector(`#node-${id}`);
+            if (el) el.classList.remove('selected');
+        });
+        this.selectedNodes.clear();
+        this._updateSelectionState();
+    },
+
+    _updateSelectionState() {
+        if (this.workspace.id === 'main-workspace') {
+            const btn = document.getElementById('btn-group-nodes');
+            if (btn) btn.classList.toggle('hidden', this.selectedNodes.size <= 1);
+        }
+    },
+
+    groupSelection() {
+        if (this.selectedNodes.size < 2) return;
+        this._historyPaused = true;
+        const ids    = new Set(this.selectedNodes);
+        const idsArr = Array.from(ids);
+
+        // 1. Classifier les liens AVANT toute suppression
+        const internalLinks = this.links.filter(l =>  ids.has(l.fromNode) &&  ids.has(l.toNode));
+        const cutInLinks    = this.links.filter(l => !ids.has(l.fromNode) &&  ids.has(l.toNode));
+        const cutOutLinks   = this.links.filter(l =>  ids.has(l.fromNode) && !ids.has(l.toNode));
+
+        // 2. Snapshot des nœuds avant suppression
+        const snap = {};
+        idsArr.forEach(id => { snap[id] = { ...this.nodes[id] }; });
+
+        // 3. Barycentre pour la position du nœud sous-processus
+        let sumX = 0, sumY = 0;
+        idsArr.forEach(id => { sumX += snap[id].x; sumY += snap[id].y; });
+        const cx = sumX / idsArr.length, cy = sumY / idsArr.length;
+
+        // 4. Ports fixes du nœud sous-processus (interface standard Déclencheur / IN → Déclencheur / OUT)
+        //    Mapping port interne → port sf fixe
+        const sfInOf  = (portId) => portId === 'in_data'  ? 'sf_in_data'  : 'sf_in_trig';
+        const sfOutOf = (portId) => portId === 'out_data' ? 'sf_out_data' : 'sf_out_trig';
+        const startOutOf = (portId) => portId === 'in_data'  ? 'sstart_out_data' : 'sstart_out_trig';
+        const endInOf    = (portId) => portId === 'out_data' ? 'send_in_data'    : 'send_in_trig';
+
+        const subflowPorts = {
+            inputs:  [
+                { id: 'sf_in_trig',  label: 'Déclencheur' },
+                { id: 'sf_in_data',  label: 'IN' },
+            ],
+            outputs: [
+                { id: 'sf_out_trig', label: 'Déclencheur' },
+                { id: 'sf_out_data', label: 'OUT' },
+            ],
+        };
+
+        // 5. Construction du workflow interne (nœuds groupés + ENTRÉE + SORTIE)
+        const startId = generateId(), endId = generateId();
+        const minX = Math.min(...idsArr.map(id => snap[id].x));
+        const maxX = Math.max(...idsArr.map(id => snap[id].x));
+
+        const internalNodes = {};
+        idsArr.forEach(id => { internalNodes[id] = { ...snap[id] }; });
+
+        internalNodes[startId] = {
+            id: startId, type: 'subflow_start', x: minX - 240, y: cy,
+            disabled: false, portsHidden: false, label: '',
+            subflowStartPorts: [
+                { id: 'sstart_out_trig', label: 'Déclencheur' },
+                { id: 'sstart_out_data', label: 'IN' },
+            ],
+        };
+        internalNodes[endId] = {
+            id: endId, type: 'subflow_end', x: maxX + 240, y: cy,
+            disabled: false, portsHidden: false, label: '',
+            subflowEndPorts: [
+                { id: 'send_in_trig', label: 'Déclencheur' },
+                { id: 'send_in_data', label: 'OUT' },
+            ],
+        };
+
+        const internalLinksList = [
+            ...internalLinks.map(l => ({ ...l })),
+            ...cutInLinks.map(l  => ({ fromNode: startId,    fromPort: startOutOf(l.toPort),   toNode: l.toNode,  toPort: l.toPort   })),
+            ...cutOutLinks.map(l => ({ fromNode: l.fromNode, fromPort: l.fromPort,              toNode: endId,     toPort: endInOf(l.fromPort) })),
+        ];
+
+        const subflowJSON = {
+            version: APP_VERSION, id: generateId(), name: 'Sous-Processus',
+            nodes: internalNodes, links: internalLinksList,
+        };
+
+        // 6. Supprimer les nœuds groupés (retire aussi leurs liens de this.links)
+        idsArr.forEach(id => this.deleteNode(id));
+        this.clearSelection();
+
+        // 7. Créer le nœud sous-processus avec ses ports fixes et son workflow interne
+        const sfId = this.createNode('subflow', cx, cy, null, {
+            label: 'Sous-Processus',
+            portsHidden: false,
+            subflowPorts,
+            subflowJSON,
+        });
+
+        // 8. Reconnecter les liens externes coupés → ports fixes du nœud sous-processus
+        cutInLinks.forEach( l => this.createLink(l.fromNode, l.fromPort, sfId, sfInOf(l.toPort)));
+        cutOutLinks.forEach(l => this.createLink(sfId, sfOutOf(l.fromPort), l.toNode, l.toPort));
+
+        this._historyPaused = false;
+        this._saveSnapshot();
+
+        const newEl = this.nodesContainer.querySelector(`#node-${sfId}`);
+        newEl?.classList.add('shadow-[0_0_30px_#ea580c]');
+        setTimeout(() => newEl?.classList.remove('shadow-[0_0_30px_#ea580c]'), 500);
+    },
+
+    // ── Canvas ────────────────────────────────────────────────────────────────
+
+    toggleGrid(btnId) {
+        this.settings.gridVisible = !this.settings.gridVisible;
+        this.bg.style.opacity = this.settings.gridVisible ? 1 : 0;
+        const btn = btnId && document.getElementById(btnId);
+        if (btn) btn.className = this.settings.gridVisible
+            ? 'p-2 bg-blue-900 border border-blue-500 text-blue-300 rounded hover:bg-blue-800 transition'
+            : 'p-2 bg-slate-800 border border-slate-600 text-slate-400 rounded hover:bg-slate-700 transition';
+    },
+
+    toggleSnap(btnId) {
+        this.settings.snap = !this.settings.snap;
+        const btn = btnId && document.getElementById(btnId);
+        if (btn) btn.className = this.settings.snap
+            ? 'p-2 bg-purple-900 border border-purple-500 text-purple-300 rounded hover:bg-purple-800 transition'
+            : 'p-2 bg-slate-800 border border-slate-600 text-slate-400 rounded hover:bg-slate-700 transition';
+    },
+
+    clearAll() {
+        this.nodes = {}; this.links = [];
+        this.selectedNodes.clear(); this._updateSelectionState();
+        this.nodesContainer.innerHTML = '';
+        this.nodesContainer.appendChild(this.selectionBox);
+        this.linksContainer.innerHTML = '';
+        this._notifyChange();
+    },
+
+    resetCamera() {
+        this.camera = { x: window.innerWidth / 2, y: window.innerHeight / 2, zoom: 1 };
+        this._updateTransform();
+    },
+
+});
