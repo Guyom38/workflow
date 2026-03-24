@@ -127,6 +127,19 @@
 
         <div class="h-6 w-px bg-slate-700 mx-1"></div>
 
+        <!-- Variables -->
+        <button onclick="openVariablesModal()"
+            class="px-3 py-1.5 bg-pink-900/60 hover:bg-pink-800 border border-pink-700 text-pink-300 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
+            title="Panneau des variables">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line>
+                <line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line>
+            </svg>
+            Variables
+        </button>
+
+        <div class="h-6 w-px bg-slate-700 mx-1"></div>
+
         <!-- Organiser -->
         <button onclick="mainEditor.autoLayout()"
             class="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 border border-indigo-700 text-indigo-300 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
@@ -488,6 +501,39 @@
                 Enregistrer
             </button>
         </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL VARIABLES
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="variables-modal" class="fixed inset-0 z-[300] hidden flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeVariablesModal()"></div>
+    <div class="relative bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col overflow-hidden" style="width:820px;max-height:82vh;">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between px-5 py-3 border-b border-slate-700 shrink-0">
+            <div class="flex items-center gap-2.5">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-pink-400 shrink-0">
+                    <line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line>
+                    <line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line>
+                </svg>
+                <span class="text-white font-bold text-sm">Variables du workflow</span>
+                <span id="var-modal-total" class="text-[0.65rem] text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full"></span>
+            </div>
+            <button onclick="closeVariablesModal()"
+                class="text-slate-400 hover:text-white p-1.5 rounded hover:bg-slate-700 transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+
+        <!-- Onglets processus -->
+        <div id="var-modal-tabs" class="flex gap-0 border-b border-slate-700 overflow-x-auto flex-shrink-0 px-4 pt-2 bg-slate-900/50"></div>
+
+        <!-- Corps : tableau -->
+        <div id="var-modal-body" class="flex-1 overflow-y-auto"></div>
+
     </div>
 </div>
 

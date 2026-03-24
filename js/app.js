@@ -228,6 +228,238 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// ── Modal Variables ───────────────────────────────────────────────────────────
+
+let _varCtxs        = [];   // [{ id, label, vars: [nodeRef, ...] }]
+let _varActiveIdx   = 0;
+let _varDirty       = false;
+
+function openVariablesModal() {
+    _varDirty = false;
+    _varCtxs  = _collectVarContexts();
+
+    const total = _varCtxs.reduce((s, c) => s + c.vars.length, 0);
+    document.getElementById('var-modal-total').textContent = `${total} variable${total !== 1 ? 's' : ''}`;
+
+    _renderVarTabs();
+    _selectVarTab(0);
+    document.getElementById('variables-modal').classList.remove('hidden');
+}
+
+function closeVariablesModal() {
+    document.getElementById('variables-modal').classList.add('hidden');
+    if (_varDirty) {
+        mainEditor._notifyChange();
+        _varDirty = false;
+    }
+}
+
+function _collectVarContexts() {
+    const ctxs = [];
+
+    // Workflow principal
+    const mainVars = Object.values(mainEditor.nodes).filter(n => n.type === 'variable');
+    ctxs.push({ id: 'main', label: 'Principal', vars: mainVars, source: 'main', subflowNodeId: null });
+
+    // Sous-processus (un niveau)
+    Object.values(mainEditor.nodes)
+        .filter(n => n.type === 'subflow' && n.subflowJSON)
+        .forEach(sfNode => {
+            const sfVars = Object.values(sfNode.subflowJSON.nodes || {}).filter(n => n.type === 'variable');
+            ctxs.push({
+                id: sfNode.id,
+                label: sfNode.label || 'Sous-Processus',
+                vars: sfVars,
+                source: 'subflow',
+                subflowNodeId: sfNode.id,
+            });
+        });
+
+    return ctxs;
+}
+
+function _renderVarTabs() {
+    const tabsEl = document.getElementById('var-modal-tabs');
+    tabsEl.innerHTML = _varCtxs.map((ctx, i) => `
+        <button onclick="_selectVarTab(${i})" id="var-tab-${i}"
+            class="var-modal-tab shrink-0 px-4 py-2 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap
+                   ${i === 0 ? 'border-pink-500 text-pink-300' : 'border-transparent text-slate-500 hover:text-slate-300'}">
+            ${i === 0
+                ? `<svg class="inline-block mr-1" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 9 12 2 21 9"></polyline><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`
+                : `<svg class="inline-block mr-1" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>`}
+            ${ctx.label}
+            <span class="ml-1.5 text-[0.6rem] px-1.5 py-0.5 rounded-full
+                ${ctx.vars.length > 0 ? 'bg-pink-900/60 text-pink-300' : 'bg-slate-800 text-slate-500'}">
+                ${ctx.vars.length}
+            </span>
+        </button>`).join('');
+}
+
+function _selectVarTab(idx) {
+    _varActiveIdx = idx;
+
+    // Styles des onglets
+    document.querySelectorAll('.var-modal-tab').forEach((btn, i) => {
+        btn.className = btn.className
+            .replace(/border-pink-500 text-pink-300|border-transparent text-slate-500 hover:text-slate-300/g, '')
+            .trim();
+        btn.classList.add(
+            ...(i === idx
+                ? ['border-pink-500', 'text-pink-300']
+                : ['border-transparent', 'text-slate-500', 'hover:text-slate-300']
+            )
+        );
+    });
+
+    const ctx  = _varCtxs[idx];
+    const body = document.getElementById('var-modal-body');
+
+    if (ctx.vars.length === 0) {
+        body.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-slate-700 mb-3">
+                <line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line>
+                <line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line>
+            </svg>
+            <p class="text-slate-500 text-sm italic">Aucune variable dans ce processus.</p>
+        </div>`;
+        return;
+    }
+
+    body.innerHTML = `
+    <table class="w-full border-collapse text-sm">
+        <thead class="sticky top-0 bg-slate-900 z-10">
+            <tr class="border-b border-slate-700">
+                <th class="text-left py-2.5 px-4 text-[0.62rem] text-slate-500 uppercase tracking-wider font-semibold w-[22%]">Nom</th>
+                <th class="text-left py-2.5 px-3 text-[0.62rem] text-slate-500 uppercase tracking-wider font-semibold w-[16%]">Type</th>
+                <th class="text-left py-2.5 px-3 text-[0.62rem] text-slate-500 uppercase tracking-wider font-semibold w-[35%]">Valeur</th>
+                <th class="text-left py-2.5 px-3 text-[0.62rem] text-slate-500 uppercase tracking-wider font-semibold">Description</th>
+            </tr>
+        </thead>
+        <tbody id="var-modal-rows">
+            ${ctx.vars.map(node => _buildVarRow(node)).join('')}
+        </tbody>
+    </table>`;
+
+    // Délégation d'événements
+    const tbody = document.getElementById('var-modal-rows');
+    tbody.addEventListener('input',  e => _onVarModalInput(e, ctx));
+    tbody.addEventListener('change', e => _onVarModalChange(e, ctx));
+}
+
+function _buildVarRow(node) {
+    const esc  = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const types = ['string','int','double','boolean','list','file','folder'];
+    const typeOpts = types.map(t => `<option value="${t}"${t === node.varType ? ' selected' : ''}>${t}</option>`).join('');
+
+    return `
+    <tr class="border-b border-slate-800/70 hover:bg-slate-800/25 transition-colors" data-var-id="${node.id}">
+        <td class="py-2 px-4">
+            <input class="vm-name bg-transparent border-b border-transparent hover:border-slate-600 focus:border-pink-500 outline-none text-white text-xs w-full font-mono transition-colors"
+                value="${esc(node.varName)}" data-var-id="${node.id}" spellcheck="false">
+        </td>
+        <td class="py-2 px-3">
+            <select class="vm-type bg-slate-800 border border-slate-600 hover:border-slate-500 rounded px-2 py-0.5 text-xs text-slate-300 outline-none cursor-pointer transition-colors"
+                data-var-id="${node.id}">${typeOpts}</select>
+        </td>
+        <td class="py-2 px-3 vm-value-cell" data-var-id="${node.id}">
+            ${_buildVarValueInput(node)}
+        </td>
+        <td class="py-2 px-3">
+            <input class="vm-desc bg-transparent border-b border-transparent hover:border-slate-600 focus:border-pink-500 outline-none text-slate-400 text-xs w-full transition-colors"
+                value="${esc(node.varDescription || '')}" data-var-id="${node.id}" placeholder="—">
+        </td>
+    </tr>`;
+}
+
+function _buildVarValueInput(node) {
+    const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const cls = 'vm-value bg-slate-800 border border-slate-600 hover:border-slate-500 focus:border-pink-500 rounded px-2 py-0.5 text-xs text-slate-200 outline-none w-full transition-colors';
+
+    switch (node.varType) {
+        case 'int':
+            return `<input type="number" step="1" class="${cls}" value="${esc(node.varValue ?? 0)}" data-var-id="${node.id}">`;
+        case 'double':
+            return `<input type="number" step="any" class="${cls}" value="${esc(node.varValue ?? 0)}" data-var-id="${node.id}">`;
+        case 'boolean':
+            return `<select class="${cls} cursor-pointer" data-var-id="${node.id}">
+                <option value="true"  ${node.varValue === true  || node.varValue === 'true'  ? 'selected' : ''}>Vrai</option>
+                <option value="false" ${node.varValue === false || node.varValue === 'false' ? 'selected' : ''}>Faux</option>
+            </select>`;
+        case 'list': {
+            const v = Array.isArray(node.varValue) ? node.varValue.join(', ') : (node.varValue || '');
+            return `<input type="text" class="${cls}" value="${esc(v)}" data-var-id="${node.id}" placeholder="val1, val2, …" title="Valeurs séparées par des virgules">`;
+        }
+        case 'file': {
+            const path = (node.varValue && typeof node.varValue === 'object') ? (node.varValue.chemin_complet || '') : (node.varValue || '');
+            return `<input type="text" class="${cls}" value="${esc(path)}" data-var-id="${node.id}" placeholder="C:\\…\\fichier.ext">`;
+        }
+        case 'folder':
+            return `<input type="text" class="${cls}" value="${esc(node.varValue || '')}" data-var-id="${node.id}" placeholder="C:\\…\\dossier">`;
+        default:
+            return `<input type="text" class="${cls}" value="${esc(node.varValue || '')}" data-var-id="${node.id}">`;
+    }
+}
+
+function _onVarModalInput(e, ctx) {
+    const id   = e.target.dataset.varId;
+    const node = ctx.vars.find(n => n.id === id);
+    if (!node) return;
+    _varDirty = true;
+
+    if (e.target.classList.contains('vm-name')) {
+        node.varName = e.target.value || 'maVariable';
+        _syncVarDOM(node);
+    } else if (e.target.classList.contains('vm-value')) {
+        _applyVarValue(node, e.target.value);
+        _syncVarDOM(node);
+    } else if (e.target.classList.contains('vm-desc')) {
+        node.varDescription = e.target.value;
+    }
+}
+
+function _onVarModalChange(e, ctx) {
+    const id   = e.target.dataset.varId;
+    const node = ctx.vars.find(n => n.id === id);
+    if (!node) return;
+    _varDirty = true;
+
+    if (e.target.classList.contains('vm-type')) {
+        node.varType  = e.target.value;
+        node.varValue = node.varType === 'list' ? [] : node.varType === 'boolean' ? false : node.varType === 'file' ? {} : '';
+        const cell = document.querySelector(`td.vm-value-cell[data-var-id="${id}"]`);
+        if (cell) cell.innerHTML = _buildVarValueInput(node);
+        _syncVarDOM(node);
+    } else if (e.target.classList.contains('vm-value')) {
+        _applyVarValue(node, e.target.value);
+        _syncVarDOM(node);
+    }
+}
+
+function _applyVarValue(node, raw) {
+    switch (node.varType) {
+        case 'int':     node.varValue = parseInt(raw, 10) || 0; break;
+        case 'double':  node.varValue = parseFloat(raw) || 0; break;
+        case 'boolean': node.varValue = raw === 'true'; break;
+        case 'list':    node.varValue = raw.split(',').map(s => s.trim()).filter(Boolean); break;
+        case 'file':
+            if (node.varValue && typeof node.varValue === 'object') node.varValue.chemin_complet = raw;
+            else node.varValue = { chemin_complet: raw, fichier: '', emplacement: '' };
+            break;
+        default:        node.varValue = raw; break;
+    }
+}
+
+// Met à jour le nœud dans le DOM du mainEditor (si visible)
+function _syncVarDOM(node) {
+    const el = mainEditor.nodesContainer.querySelector(`#node-${node.id}`);
+    if (!el) return;
+    const nd = el.querySelector('.var-name-display');
+    if (nd) nd.textContent = node.varName;
+    const ni = el.querySelector('.var-name-input');
+    if (ni) ni.value = node.varName;
+}
+
 // ── Raccourcis clavier ────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
@@ -245,6 +477,20 @@ document.addEventListener('keydown', (e) => {
     } else if (e.key === 'y' || e.key === 'Y') {
         e.preventDefault();
         editor.redo();
+    } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        editor.selectAll();
+    } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        if (editor._copySelection()) showToast(`${editor.selectedNodes.size} brique(s) copiée(s)`);
+    } else if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        const n = editor.selectedNodes.size;
+        editor._cutSelection();
+        if (n > 0) showToast(`${n} brique(s) coupée(s)`);
+    } else if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        editor._pasteSelection();
     }
 });
 

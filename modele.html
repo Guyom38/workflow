@@ -3,1153 +3,573 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visual Workflow Editor - High-Tech</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>NEXUS — Créer un script Python</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-
         :root {
-            --bg-color: #0b0f19;
-            --grid-color: rgba(59, 130, 246, 0.1);
-            --node-bg: rgba(15, 23, 42, 0.85);
-            --node-border: #1e293b;
-            --link-color: #8b5cf6;
-            --link-active: #3b82f6;
-            --text-main: #e2e8f0;
+            --bg:       #080e1a;
+            --surface:  #0f172a;
+            --s2:       #1e293b;
+            --s3:       #334155;
+            --border:   #1e293b;
+            --b2:       #2d3d55;
+            --text:     #e2e8f0;
+            --muted:    #64748b;
+            --yellow:   #fbbf24;
+            --green:    #4ade80;
+            --blue:     #60a5fa;
+            --pink:     #f472b6;
+            --purple:   #c084fc;
+            --orange:   #fb923c;
+            --teal:     #2dd4bf;
+            --red:      #f87171;
         }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            overflow: hidden;
-            user-select: none;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            font-size: 14.5px;
+            line-height: 1.7;
         }
 
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        /* ── Page header ── */
+        .page-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 20px 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .page-header-left { display: flex; align-items: center; gap: 14px; }
+        .nexus-logo { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: .9rem; color: #60a5fa; letter-spacing: .1em; }
+        .page-title { font-size: 1rem; font-weight: 700; color: #f1f5f9; }
+        .page-sub   { font-size: .78rem; color: var(--muted); margin-top: 1px; }
+        .btn-back {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; border-radius: 6px;
+            background: var(--s2); border: 1px solid var(--b2);
+            color: #94a3b8; font-size: .8rem; text-decoration: none;
+            transition: all .15s;
+        }
+        .btn-back:hover { color: white; border-color: var(--s3); background: var(--s3); text-decoration: none; }
 
-        .workspace-bg {
-            background-size: 20px 20px;
-            background-image: 
-                linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
-                linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
-            transition: opacity 0.3s;
-        }
+        /* ── Layout ── */
+        .wrapper { max-width: 820px; margin: 0 auto; padding: 44px 32px 80px; }
 
-        .node {
-            backdrop-filter: blur(8px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
-            transition: box-shadow 0.2s, border-color 0.2s;
-            transform-origin: top left;
-        }
-        
-        .node.selected {
-            border-color: #3b82f6;
-            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
-        }
-
-        .node.disabled {
-            opacity: 0.5;
-            filter: grayscale(100%);
-        }
-
-        .port {
-            width: 14px;
-            height: 14px;
-            background-color: #1e293b;
-            border: 2px solid #64748b;
-            border-radius: 50%;
-            cursor: crosshair;
-            transition: all 0.2s;
-        }
-        
-        .port:hover, .port.active {
-            background-color: #a855f7;
-            border-color: #e9d5ff;
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
-            transform: scale(1.2);
-        }
-
-        .link-path {
-            fill: none;
-            stroke: var(--link-color);
-            stroke-width: 4;
-            stroke-linecap: round;
-            transition: stroke 0.3s, stroke-width 0.3s;
-            filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.4));
-        }
-        
-        .link-path:hover {
-            stroke: var(--link-active);
-            stroke-width: 6;
-            cursor: pointer;
-            filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6));
-        }
-
-        .link-path.dragging {
-            stroke: #3b82f6;
-            stroke-dasharray: 10;
-            animation: dash 1s linear infinite;
-        }
-
-        @keyframes dash {
-            to { stroke-dashoffset: -20; }
-        }
-
-        .node-input, textarea.node-input {
-            background: rgba(0,0,0,0.3);
-            border: 1px solid #334155;
-            color: #f8fafc;
+        /* ── Sections ── */
+        .section { margin-bottom: 52px; }
+        .section-label {
+            display: inline-block;
+            font-size: .6rem; font-weight: 800;
+            text-transform: uppercase; letter-spacing: .15em;
+            color: var(--yellow);
+            background: rgba(251,191,36,.1);
+            border: 1px solid rgba(251,191,36,.2);
             border-radius: 4px;
-            padding: 4px 8px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            width: 100%;
-            outline: none;
-            transition: border-color 0.2s;
+            padding: 2px 8px;
+            margin-bottom: 10px;
         }
-        .node-input:focus { border-color: #3b82f6; }
-        
-        .header-python { background: linear-gradient(90deg, #ca8a04 0%, #a16207 100%); }
-        .header-api { background: linear-gradient(90deg, #0d9488 0%, #0f766e 100%); }
-        .header-start { background: linear-gradient(90deg, #16a34a 0%, #15803d 100%); }
-        .header-operator { background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%); }
-        .header-timing { background: linear-gradient(90deg, #db2777 0%, #be185d 100%); }
-        .header-condition { background: linear-gradient(90deg, #7c3aed 0%, #6d28d9 100%); }
-        .header-subflow { background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%); }
-        .header-note { background: linear-gradient(90deg, #475569 0%, #334155 100%); }
+        h2 {
+            font-size: 1.35rem; font-weight: 800;
+            color: #f1f5f9; margin-bottom: 10px;
+        }
+        h3 {
+            font-size: .9rem; font-weight: 700;
+            color: var(--yellow); margin: 22px 0 8px;
+            text-transform: uppercase; letter-spacing: .06em;
+        }
+        p { color: #94a3b8; margin-bottom: 10px; font-size: .9rem; }
+        p strong { color: #e2e8f0; }
 
-        .node-note {
-            background: rgba(15, 23, 42, 0.3) !important;
-            border: 2px dashed #64748b !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            resize: both;
-            overflow: hidden;
-            z-index: 5;
+        /* ── Code blocks ── */
+        pre {
+            background: #050b14;
+            border: 1px solid var(--b2);
+            border-radius: 10px;
+            padding: 22px 26px;
+            overflow-x: auto;
+            margin: 12px 0 18px;
+            position: relative;
         }
-        .node-note.selected {
-            border-color: #3b82f6 !important;
-            background: rgba(15, 23, 42, 0.5) !important;
+        pre code {
+            font-family: 'Consolas', 'Fira Code', 'JetBrains Mono', monospace;
+            font-size: .82rem;
+            line-height: 1.8;
+            color: var(--text);
         }
-
-        .settings-menu {
-            display: none;
-            position: absolute;
-            top: 100%;
-            right: 0;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 6px;
-            padding: 4px;
-            z-index: 50;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-        }
-        .settings-menu.active { display: block; }
-        .settings-item {
-            padding: 6px 12px;
-            font-size: 0.8rem;
-            cursor: pointer;
+        code {
+            font-family: 'Consolas', 'Fira Code', monospace;
+            font-size: .8rem;
+            background: var(--s2);
+            border: 1px solid var(--b2);
             border-radius: 4px;
-            color: #cbd5e1;
+            padding: 1px 6px;
+            color: var(--yellow);
         }
-        .settings-item:hover { background: #334155; color: white; }
+        pre code { background: none; border: none; padding: 0; }
 
-        .hw-font { font-family: 'JetBrains Mono', monospace; }
+        /* Syntax */
+        .c  { color: #3d5270; font-style: italic; }
+        .s  { color: var(--green); }
+        .k  { color: var(--blue); }
+        .fn { color: var(--yellow); }
+        .t  { color: var(--purple); }
+        .n  { color: #f1f5f9; }
+        .op { color: var(--muted); }
+        .kw { color: var(--teal); font-weight: 600; }
+        .vl { color: var(--orange); }
+        .bk { color: var(--pink); }
+        .cm { color: var(--muted); font-style: italic; }
 
-        /* SVG Circular Progress Styles */
-        .circle-bg {
-            fill: none;
-            stroke: #1e293b;
-            stroke-width: 3.5;
-        }
-        .circle-progress {
-            fill: none;
-            stroke-width: 3.5;
-            stroke-linecap: round;
-            transition: stroke-dasharray 0.5s ease-out, stroke 0.5s ease-out;
+        /* Annotation flottante dans le code */
+        .ann {
+            display: inline-block;
+            background: rgba(251,191,36,.12);
+            border: 1px solid rgba(251,191,36,.25);
+            color: var(--yellow);
+            font-size: .65rem; font-style: normal;
+            border-radius: 3px; padding: 0 5px;
+            margin-left: 8px;
+            vertical-align: middle;
+            font-family: system-ui, sans-serif;
+            letter-spacing: .03em;
         }
 
-        .selection-box {
-            position: absolute;
-            border: 1px solid rgba(59, 130, 246, 0.8);
-            background: rgba(59, 130, 246, 0.2);
-            pointer-events: none;
-            z-index: 100;
+        /* ── Type cards ── */
+        .types-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+            margin: 14px 0 20px;
         }
-        
-        /* GPU Text Glow */
-        .gpu-text-glow {
-            text-shadow: 0 0 15px rgba(52, 211, 153, 0.5);
+        .type-card {
+            background: var(--surface);
+            border: 1px solid var(--b2);
+            border-radius: 9px;
+            padding: 13px 15px;
+            transition: border-color .15s;
+        }
+        .type-card:hover { border-color: var(--s3); }
+        .type-name {
+            display: inline-block;
+            font-family: monospace; font-size: .8rem; font-weight: 700;
+            padding: 2px 8px; border-radius: 4px; margin-bottom: 7px;
+        }
+        .type-desc { font-size: .78rem; color: var(--muted); margin-bottom: 6px; }
+        .type-props { font-size: .72rem; color: #475569; }
+        .type-props span { color: #64748b; }
+
+        .tn-str    { background: rgba(74,222,128,.1);  color: #4ade80; border: 1px solid rgba(74,222,128,.2); }
+        .tn-int    { background: rgba(251,191,36,.1);  color: #fbbf24; border: 1px solid rgba(251,191,36,.2); }
+        .tn-double { background: rgba(251,146,60,.1);  color: #fb923c; border: 1px solid rgba(251,146,60,.2); }
+        .tn-bool   { background: rgba(244,114,182,.1); color: #f472b6; border: 1px solid rgba(244,114,182,.2); }
+        .tn-list   { background: rgba(192,132,252,.1); color: #c084fc; border: 1px solid rgba(192,132,252,.2); }
+        .tn-file   { background: rgba(96,165,250,.1);  color: #60a5fa; border: 1px solid rgba(96,165,250,.2); }
+        .tn-folder { background: rgba(45,212,191,.1);  color: #2dd4bf; border: 1px solid rgba(45,212,191,.2); }
+        .tn-array  { background: rgba(148,163,184,.1); color: #94a3b8; border: 1px solid rgba(148,163,184,.2); }
+        .tn-object { background: rgba(148,163,184,.1); color: #94a3b8; border: 1px solid rgba(148,163,184,.2); }
+        .tn-float  { background: rgba(251,146,60,.1);  color: #fb923c; border: 1px solid rgba(251,146,60,.2); }
+
+        /* ── Callouts ── */
+        .callout {
+            display: flex; gap: 12px;
+            padding: 13px 16px;
+            border-radius: 8px;
+            margin: 14px 0;
+            font-size: .85rem;
+        }
+        .callout-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+        .c-info  { background: rgba(96,165,250,.07);  border: 1px solid rgba(96,165,250,.18);  color: #bfdbfe; }
+        .c-warn  { background: rgba(251,191,36,.07);  border: 1px solid rgba(251,191,36,.18);  color: #fef08a; }
+        .c-tip   { background: rgba(74,222,128,.07);  border: 1px solid rgba(74,222,128,.18);  color: #bbf7d0; }
+        .c-error { background: rgba(248,113,113,.07); border: 1px solid rgba(248,113,113,.18); color: #fecaca; }
+        .callout strong { color: inherit; }
+
+        /* ── Divider ── */
+        .sep { border: none; border-top: 1px solid var(--border); margin: 44px 0; }
+
+        /* ── Checklist ── */
+        .check { display: flex; flex-direction: column; gap: 0; }
+        .check-row {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 9px 0; border-bottom: 1px solid var(--border);
+            font-size: .87rem; color: #94a3b8;
+        }
+        .check-row:last-child { border: none; }
+        .check-box {
+            width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px;
+            border: 1.5px solid var(--s3); border-radius: 3px;
+        }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center; color: var(--muted); font-size: .76rem;
+            padding: 32px 0 0; border-top: 1px solid var(--border);
+            margin-top: 20px;
         }
     </style>
 </head>
-<body class="flex flex-col h-screen w-full m-0">
+<body>
 
-    <!-- TOP TOOLBAR -->
-    <header class="bg-slate-900 border-b border-slate-800 p-3 flex justify-between items-center z-10 shadow-lg relative flex-wrap gap-y-2">
-        <div class="flex items-center gap-4">
-            <div class="flex items-center gap-2 text-blue-400 font-bold text-lg tracking-wider">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-pulse">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                </svg>
-                NEXUS
-                <span class="text-slate-500 font-normal text-sm ml-2 hidden sm:inline border-l border-slate-700 pl-4">Processus Principal</span>
-            </div>
-        </div>
-        
-        <!-- Action / View Tools -->
-        <div class="flex items-center gap-3">
-            <button id="btn-auto-layout" onclick="mainEditor.autoLayout()" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white rounded text-sm transition-colors shadow-[0_0_10px_rgba(16,185,129,0.2)] flex items-center gap-2 font-bold" title="Réorganisation Intelligente selon hiérarchie">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-                Organiser
-            </button>
-            
-            <div class="h-6 w-px bg-slate-700 mx-1"></div>
-
-            <button id="btn-group-nodes" onclick="mainEditor.groupSelection()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm transition-colors shadow-[0_0_10px_rgba(79,70,229,0.5)] hidden flex items-center gap-2 font-bold animate-pulse">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-                Grouper
-            </button>
-
-            <button id="btn-grid" onclick="mainEditor.toggleGrid('btn-grid')" class="p-2 bg-blue-900 border border-blue-500 text-blue-300 rounded hover:bg-blue-800 transition" title="Afficher/Masquer Grille">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
-            </button>
-            <button id="btn-snap" onclick="mainEditor.toggleSnap('btn-snap')" class="p-2 bg-purple-900 border border-purple-500 text-purple-300 rounded hover:bg-purple-800 transition" title="Magnétisme (Snap to Grid)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 15h16a2 2 0 0 1 0 4H3v-4z"></path></svg>
-            </button>
-            <div class="h-6 w-px bg-slate-700 mx-1"></div>
-            <button onclick="mainEditor.clearAll()" class="px-3 py-1.5 bg-red-900/50 hover:bg-red-900 border border-red-800 hover:border-red-500 rounded text-sm text-red-300 transition-colors">Vider</button>
-        </div>
-    </header>
-
-    <!-- MAIN WORKSPACE -->
-    <main class="flex-1 relative overflow-hidden" id="main-workspace">
-        <div class="absolute w-[5000px] h-[5000px] left-[-2500px] top-[-2500px] pointer-events-none workspace-bg"></div>
-        <div class="absolute w-0 h-0 canvas-layer" style="transform: translate(50vw, 50vh) scale(1);">
-            <svg class="absolute overflow-visible pointer-events-none svg-layer" style="z-index: 10;">
-                <g class="links-layer"></g>
-                <path class="link-path dragging temp-link-path" style="display: none;"></path>
+<!-- Header -->
+<div class="page-header">
+    <div class="page-header-left">
+        <div class="nexus-logo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
             </svg>
-            <div class="absolute nodes-layer" style="z-index: 20;"></div>
+            NEXUS
         </div>
-
-        <!-- Left Floating Panel (Help + Node Palette) -->
-        <div class="absolute top-4 left-4 z-50 flex flex-col gap-3 pointer-events-none">
-            
-            <div class="text-xs text-slate-400 bg-slate-900/80 p-2.5 rounded-lg border border-slate-700 backdrop-blur-md shadow-lg">
-                Clic Milieu / Alt+Clic : Vue &nbsp;|&nbsp; Molette : Zoom <br>
-                Glisser : Sélection &nbsp;|&nbsp; Shift+Clic : Multi-sélection
-            </div>
-            
-            <div class="flex flex-col gap-1.5 pointer-events-auto w-44">
-                <button onclick="mainEditor.addNode('start')" class="px-3 py-2 bg-slate-900/80 hover:bg-green-900/80 border border-slate-700 hover:border-green-500 rounded-lg text-sm text-slate-300 transition-all flex items-center justify-between backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] group">
-                    <span class="font-medium">Départ</span>
-                    <div class="w-2 h-2 rounded-full bg-green-500 group-hover:shadow-[0_0_8px_#22c55e]"></div>
-                </button>
-                <button onclick="mainEditor.addNode('python')" class="px-3 py-2 bg-slate-900/80 hover:bg-yellow-900/80 border border-slate-700 hover:border-yellow-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(234,179,8,0.2)]">Script Python</button>
-                <button onclick="mainEditor.addNode('api')" class="px-3 py-2 bg-slate-900/80 hover:bg-teal-900/80 border border-slate-700 hover:border-teal-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(20,184,166,0.2)]">Requête API</button>
-                <button onclick="mainEditor.addNode('operator')" class="px-3 py-2 bg-slate-900/80 hover:bg-blue-900/80 border border-slate-700 hover:border-blue-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(59,130,246,0.2)]">Opérateur</button>
-                <button onclick="mainEditor.addNode('timing')" class="px-3 py-2 bg-slate-900/80 hover:bg-pink-900/80 border border-slate-700 hover:border-pink-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(236,72,153,0.2)]">Temporisation</button>
-                <button onclick="mainEditor.addNode('condition')" class="px-3 py-2 bg-slate-900/80 hover:bg-purple-900/80 border border-slate-700 hover:border-purple-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(168,85,247,0.2)]">Condition (SI)</button>
-                <button onclick="mainEditor.addNode('subflow')" class="px-3 py-2 bg-slate-900/80 hover:bg-orange-900/80 border border-slate-700 hover:border-orange-500 rounded-lg text-sm text-slate-300 transition-all flex items-center gap-2 backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(249,115,22,0.2)]">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-                    Sous-Processus
-                </button>
-                <button onclick="mainEditor.addNode('note')" class="px-3 py-2 bg-slate-900/80 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg">Note / Groupe</button>
-            </div>
+        <div style="width:1px;height:28px;background:var(--border)"></div>
+        <div>
+            <div class="page-title">Créer un script Python pour NEXUS</div>
+            <div class="page-sub">Format de la docstring · Types d'entrée/sortie · Exemple complet</div>
         </div>
-    </main>
+    </div>
+    <a href="index.html" class="btn-back">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        Retour à NEXUS
+    </a>
+</div>
 
-    <!-- BOTTOM HARDWARE MONITORING (CIRCULAR DASHBOARD) -->
-    <footer class="bg-[#080b13] border-t border-slate-800 py-3 px-6 z-10 shadow-[0_-5px_15px_rgba(0,0,0,0.5)] flex items-center justify-between">
-        
-        <!-- Left: Circular Meters -->
-        <div class="flex gap-8 items-center">
-            
-            <!-- CPU Circle -->
-            <div class="flex items-center gap-3">
-                <div class="relative w-14 h-14">
-                    <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
-                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path id="mon-cpu-ring" class="circle-progress stroke-blue-500" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center">
-                        <span id="mon-cpu-val" class="hw-font text-blue-400 font-bold text-sm">0%</span>
-                    </div>
-                </div>
-                <div class="flex flex-col">
-                    <span class="text-slate-400 text-xs font-bold tracking-widest uppercase">CPU</span>
-                    <span id="mon-cpu-spec" class="text-slate-500 text-[0.65rem]">-- Cœurs</span>
-                </div>
+<div class="wrapper">
+
+    <!-- ── 1. Structure d'un script ── -->
+    <div class="section">
+        <div class="section-label">01 — Structure</div>
+        <h2>Anatomie d'un script NEXUS</h2>
+        <p>
+            Un script est un fichier <code>.py</code> ordinaire avec <strong>trois parties obligatoires</strong> :
+            une docstring de métadonnées, une fonction principale, et un point d'entrée CLI.
+        </p>
+
+<pre><code><span class="c">┌─────────────────────────────────────────────────────────────┐
+│  1. DOCSTRING  — lue par NEXUS pour configurer les ports    │
+└─────────────────────────────────────────────────────────────┘</span>
+<span class="s">"""
+@workflow:name:         Nom de la brique
+@workflow:description:  Ce que fait ce script.
+@workflow:input:        { … }
+@workflow:output:       { … }
+@workflow:dependencies: package1,package2
+"""</span>
+
+<span class="c">┌─────────────────────────────────────────────────────────────┐
+│  2. IMPORTS (standards uniquement au niveau module)         │
+└─────────────────────────────────────────────────────────────┘</span>
+<span class="k">import</span> <span class="n">os</span><span class="op">,</span> <span class="n">json</span>
+<span class="k">from</span> <span class="n">pathlib</span> <span class="k">import</span> <span class="n">Path</span>
+
+<span class="c">┌─────────────────────────────────────────────────────────────┐
+│  3. FONCTION PRINCIPALE  — reçoit dict, retourne dict       │
+└─────────────────────────────────────────────────────────────┘</span>
+<span class="k">def</span> <span class="fn">ma_brique</span><span class="op">(</span><span class="n">params</span><span class="op">:</span> <span class="t">dict</span><span class="op">)</span> <span class="op">-></span> <span class="t">dict</span><span class="op">:</span>
+    <span class="op">...</span>
+    <span class="k">return</span> <span class="op">{</span><span class="s">"sortie"</span><span class="op">:</span> <span class="n">valeur</span><span class="op">}</span>
+
+<span class="c">┌─────────────────────────────────────────────────────────────┐
+│  4. POINT D'ENTRÉE CLI  — pour tester sans NEXUS            │
+└─────────────────────────────────────────────────────────────┘</span>
+<span class="k">if</span> <span class="n">__name__</span> <span class="op">==</span> <span class="s">"__main__"</span><span class="op">:</span>
+    <span class="k">import</span> <span class="n">sys</span>
+    <span class="n">data</span> <span class="op">=</span> <span class="n">json</span><span class="op">.</span><span class="fn">loads</span><span class="op">(</span><span class="n">sys</span><span class="op">.</span><span class="n">argv</span><span class="op">[</span><span class="vl">1</span><span class="op">])</span> <span class="k">if</span> <span class="fn">len</span><span class="op">(</span><span class="n">sys</span><span class="op">.</span><span class="n">argv</span><span class="op">)</span> <span class="op">></span> <span class="vl">1</span> <span class="k">else</span> <span class="op">{}</span>
+    <span class="fn">print</span><span class="op">(</span><span class="n">json</span><span class="op">.</span><span class="fn">dumps</span><span class="op">(</span><span class="fn">ma_brique</span><span class="op">(</span><span class="n">data</span><span class="op">),</span> <span class="n">ensure_ascii</span><span class="op">=</span><span class="bk">False</span><span class="op">,</span> <span class="n">indent</span><span class="op">=</span><span class="vl">2</span><span class="op">))</span></code></pre>
+
+        <div class="callout c-warn">
+            <div class="callout-icon">⚠️</div>
+            <div>
+                La docstring doit être le <strong>tout premier élément</strong> du fichier — avant tout <code>import</code>.
+                NEXUS la lit sans exécuter le code.
             </div>
-
-            <!-- RAM Circle -->
-            <div class="flex items-center gap-3">
-                <div class="relative w-14 h-14">
-                    <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
-                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path id="mon-ram-ring" class="circle-progress stroke-purple-500" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center">
-                        <span id="mon-ram-val" class="hw-font text-purple-400 font-bold text-sm">0%</span>
-                    </div>
-                </div>
-                <div class="flex flex-col">
-                    <span class="text-slate-400 text-xs font-bold tracking-widest uppercase">RAM</span>
-                    <span id="mon-ram-spec" class="text-slate-500 text-[0.65rem]">-- GB Max</span>
-                </div>
-            </div>
-
-            <!-- TEMP Circle -->
-            <div class="flex items-center gap-3">
-                <div class="relative w-14 h-14">
-                    <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
-                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path id="mon-temp-ring" class="circle-progress stroke-orange-500" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center">
-                        <span id="mon-temp-val" class="hw-font text-orange-400 font-bold text-sm">0°</span>
-                    </div>
-                </div>
-                <div class="flex flex-col">
-                    <span class="text-slate-400 text-xs font-bold tracking-widest uppercase">TEMP</span>
-                    <span class="text-slate-500 text-[0.65rem]">Système</span>
-                </div>
-            </div>
-
-            <!-- GPU Load Circle -->
-            <div class="flex items-center gap-3 border-l border-slate-800 pl-6 ml-2">
-                <div class="relative w-14 h-14">
-                    <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
-                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path id="mon-gpu-ring" class="circle-progress stroke-teal-500" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center">
-                        <span id="mon-gpu-val" class="hw-font text-teal-400 font-bold text-sm">0%</span>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Right: Big GPU Name & Status -->
-        <div class="flex flex-col justify-center items-end text-right">
-            <span class="text-slate-500 uppercase tracking-widest text-[0.65rem] mb-1">Unité de Traitement Graphique Active</span>
-            <div class="hw-font font-bold text-xl lg:text-2xl text-emerald-400 gpu-text-glow truncate max-w-md lg:max-w-lg" id="mon-gpu-name">
-                Recherche GPU...
-            </div>
-            <div class="flex items-center gap-2 mt-1">
-                <div class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e] animate-pulse"></div>
-                <span class="text-slate-400 text-xs tracking-wider">MOTEUR EN LIGNE</span>
-            </div>
-        </div>
-
-    </footer>
-
-    <!-- MODAL SOUS-PROCESSUS -->
-    <div id="subflow-modal" class="fixed inset-0 z-[100] hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8 transition-opacity">
-        <div class="bg-[var(--bg-color)] w-full h-full rounded-xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden relative">
-            
-            <header class="bg-slate-900 border-b border-slate-800 p-3 flex justify-between items-center z-10 shadow-md flex-wrap gap-2">
-                <div class="flex items-center gap-3 text-sm">
-                    <button onclick="closeSubflowModal()" class="text-slate-400 hover:text-white transition flex items-center gap-1">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                        Processus Principal
-                    </button>
-                    <span class="text-slate-600 font-bold">&gt;</span>
-                    <span class="text-orange-400 font-bold" id="modal-breadcrumb-current">Sous-Processus</span>
-                </div>
-
-                <div class="flex gap-4 items-center">
-                    <button onclick="modalEditor.autoLayout()" class="px-2 py-1 bg-emerald-800 hover:bg-emerald-700 border border-emerald-600 rounded text-xs text-white transition-colors flex items-center gap-1 shadow-sm" title="Réorganiser Intelligement">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg> Auto
-                    </button>
-
-                    <button onclick="closeSubflowModal()" class="text-slate-400 hover:text-red-400 transition ml-2" title="Fermer le sous-processus">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    </button>
-                </div>
-            </header>
-
-            <main class="flex-1 relative overflow-hidden" id="modal-workspace">
-                <div class="absolute w-[5000px] h-[5000px] left-[-2500px] top-[-2500px] pointer-events-none workspace-bg"></div>
-                <div class="absolute w-0 h-0 canvas-layer" style="transform: translate(50vw, 50vh) scale(1);">
-                    <svg class="absolute overflow-visible pointer-events-none svg-layer" style="z-index: 10;">
-                        <g class="links-layer"></g>
-                        <path class="link-path dragging temp-link-path" style="display: none;"></path>
-                    </svg>
-                    <div class="absolute nodes-layer" style="z-index: 20;"></div>
-                </div>
-
-                <!-- Left Floating Panel for Modal -->
-                <div class="absolute top-4 left-4 z-50 flex flex-col gap-3 pointer-events-none">
-                    <div class="text-xs text-slate-400 bg-slate-900/80 p-2.5 rounded-lg border border-slate-700 backdrop-blur-md shadow-lg">
-                        Clic Milieu / Alt+Clic : Vue &nbsp;|&nbsp; Molette : Zoom <br>
-                        Glisser : Sélection &nbsp;|&nbsp; Shift+Clic : Multi-sélection
-                    </div>
-                    
-                    <div class="flex flex-col gap-1.5 pointer-events-auto w-44">
-                        <button onclick="modalEditor.addNode('start')" class="px-3 py-2 bg-slate-900/80 hover:bg-green-900/80 border border-slate-700 hover:border-green-500 rounded-lg text-sm text-slate-300 transition-all flex items-center justify-between backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] group">
-                            <span class="font-medium">Départ</span>
-                            <div class="w-2 h-2 rounded-full bg-green-500 group-hover:shadow-[0_0_8px_#22c55e]"></div>
-                        </button>
-                        <button onclick="modalEditor.addNode('python')" class="px-3 py-2 bg-slate-900/80 hover:bg-yellow-900/80 border border-slate-700 hover:border-yellow-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(234,179,8,0.2)]">Script Python</button>
-                        <button onclick="modalEditor.addNode('api')" class="px-3 py-2 bg-slate-900/80 hover:bg-teal-900/80 border border-slate-700 hover:border-teal-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(20,184,166,0.2)]">Requête API</button>
-                        <button onclick="modalEditor.addNode('operator')" class="px-3 py-2 bg-slate-900/80 hover:bg-blue-900/80 border border-slate-700 hover:border-blue-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(59,130,246,0.2)]">Opérateur</button>
-                        <button onclick="modalEditor.addNode('timing')" class="px-3 py-2 bg-slate-900/80 hover:bg-pink-900/80 border border-slate-700 hover:border-pink-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(236,72,153,0.2)]">Temporisation</button>
-                        <button onclick="modalEditor.addNode('condition')" class="px-3 py-2 bg-slate-900/80 hover:bg-purple-900/80 border border-slate-700 hover:border-purple-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(168,85,247,0.2)]">Condition (SI)</button>
-                        <button onclick="modalEditor.addNode('subflow')" class="px-3 py-2 bg-slate-900/80 hover:bg-orange-900/80 border border-slate-700 hover:border-orange-500 rounded-lg text-sm text-slate-300 transition-all flex items-center gap-2 backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(249,115,22,0.2)]">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-                            Sous-Processus
-                        </button>
-                        <button onclick="modalEditor.addNode('note')" class="px-3 py-2 bg-slate-900/80 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 rounded-lg text-sm text-slate-300 transition-all text-left backdrop-blur-md shadow-lg">Note / Groupe</button>
-                    </div>
-                </div>
-            </main>
         </div>
     </div>
 
-    <!-- Logic Script -->
-    <script>
-        // --- CONFIG & UTILS ---
-        const NODE_TYPES = {
-            'start': { title: 'DÉPART', headerClass: 'header-start', width: 200, 
-                inputs: [], outputs: [{id: 'out', label: 'Déclencheur'}] },
-            'python': { title: 'SCRIPT PYTHON', headerClass: 'header-python', width: 240, 
-                inputs: [{id: 'in_trig', label: 'Déclencheur'}, {id: 'in_data', label: 'Données IN'}], 
-                outputs: [{id: 'out_trig', label: 'Déclencheur'}, {id: 'out_data', label: 'Données OUT'}] },
-            'api': { title: 'REQUÊTE API', headerClass: 'header-api', width: 220, 
-                inputs: [{id: 'in', label: 'Déclencheur'}], 
-                outputs: [{id: 'out_ok', label: 'Succès'}, {id: 'out_err', label: 'Erreur'}] },
-            'operator': { title: 'OPÉRATEUR', headerClass: 'header-operator', width: 200, 
-                inputs: [{id: 'a', label: 'A'}, {id: 'b', label: 'B'}], 
-                outputs: [{id: 'res', label: 'Résultat'}] },
-            'timing': { title: 'TEMPORISATION', headerClass: 'header-timing', width: 180, 
-                inputs: [{id: 'in', label: 'IN'}], 
-                outputs: [{id: 'out', label: 'OUT'}] },
-            'condition': { title: 'CONDITION (SI)', headerClass: 'header-condition', width: 200, 
-                inputs: [{id: 'in', label: 'Évaluation'}], 
-                outputs: [{id: 't', label: 'Vrai'}, {id: 'f', label: 'Faux'}] },
-            'subflow': { title: 'SOUS-PROCESSUS', headerClass: 'header-subflow', width: 240, 
-                inputs: [{id: 'in_a', label: 'IN A'}, {id: 'in_b', label: 'IN B'}], 
-                outputs: [{id: 'out_a', label: 'OUT A'}, {id: 'out_b', label: 'OUT B'}] },
-            'note': { title: 'NOTES', headerClass: 'header-note', width: 260, 
-                inputs: [], outputs: [] }
-        };
-
-        const generateId = () => Math.random().toString(36).substr(2, 9);
-
-        // --- CORE APPLICATION CLASS ---
-        class WorkflowEditor {
-            constructor(containerId) {
-                this.nodes = {};
-                this.links = [];
-                this.selectedNodes = new Set();
-                this.camera = { x: window.innerWidth / 2, y: window.innerHeight / 2, zoom: 1 };
-                this.settings = { gridVisible: true, snap: true, snapSize: 20 };
-                
-                this.dragState = {
-                    type: null, startX: 0, startY: 0, initX: 0, initY: 0, nodes: []
-                };
-
-                this.workspace = document.getElementById(containerId);
-                this.bg = this.workspace.querySelector('.workspace-bg');
-                this.canvas = this.workspace.querySelector('.canvas-layer');
-                this.nodesContainer = this.workspace.querySelector('.nodes-layer');
-                this.linksContainer = this.workspace.querySelector('.links-layer');
-                this.tempLink = this.workspace.querySelector('.temp-link-path');
-
-                this.selectionBox = document.createElement('div');
-                this.selectionBox.className = 'selection-box hidden';
-                this.nodesContainer.appendChild(this.selectionBox);
-
-                this.initEvents();
-                this.updateTransform();
-            }
-
-            buildDemoScene() {
-                const n5 = this.createNode('note', -450, -220);
-                const n1 = this.createNode('start', -400, -100);
-                const n2 = this.createNode('python', -100, -120);
-                const n3 = this.createNode('condition', 200, -100);
-                const n4 = this.createNode('api', 450, -150);
-                const n6 = this.createNode('subflow', 150, 100);
-                
-                setTimeout(() => {
-                    const noteEl = this.nodesContainer.querySelector(`#node-${n5}`);
-                    if(noteEl) {
-                        noteEl.style.width = '650px';
-                        noteEl.style.height = '350px';
-                        this.nodesContainer.prepend(noteEl);
-                    }
-                    const ta = this.nodesContainer.querySelector(`#node-${n5} textarea`);
-                    if(ta) ta.value = " GROUPE : Pipeline de traitement\n\n (Sélectionnez plusieurs blocs avec Shift ou Glissez une zone,\n puis cliquez sur Grouper en haut !)\n 1. Déclenchement automatique.\n 2. Script Python.";
-                }, 100);
-
-                this.createLink(n1, 'out', n2, 'in_trig');
-                this.createLink(n2, 'out_trig', n3, 'in');
-                this.createLink(n3, 't', n4, 'in');
-                this.createLink(n2, 'out_data', n6, 'in_a');
-            }
-
-            addNode(type) {
-                const rect = this.workspace.getBoundingClientRect();
-                const x = -this.camera.x / this.camera.zoom;
-                const y = -this.camera.y / this.camera.zoom;
-                this.createNode(type, x, y);
-            }
-
-            autoLayout() {
-                const adjacency = {};
-                const inDegree = {};
-                
-                Object.keys(this.nodes).forEach(id => { adjacency[id] = []; inDegree[id] = 0; });
-                this.links.forEach(link => {
-                    if (adjacency[link.fromNode] && inDegree[link.toNode] !== undefined) {
-                        adjacency[link.fromNode].push(link.toNode);
-                        inDegree[link.toNode]++;
-                    }
-                });
-
-                const layers = [];
-                let currentLayer = Object.keys(inDegree).filter(id => inDegree[id] === 0);
-                const visited = new Set(currentLayer);
-
-                while (currentLayer.length > 0) {
-                    layers.push(currentLayer);
-                    const nextLayer = [];
-                    currentLayer.forEach(nodeId => {
-                        adjacency[nodeId].forEach(targetId => {
-                            inDegree[targetId]--;
-                            if (inDegree[targetId] <= 0 && !visited.has(targetId)) {
-                                visited.add(targetId);
-                                nextLayer.push(targetId);
-                            }
-                        });
-                    });
-                    currentLayer = nextLayer;
-                }
-
-                const unvisited = Object.keys(this.nodes).filter(id => !visited.has(id));
-                if (unvisited.length > 0) layers.push(unvisited);
-
-                const marginX = 350; const marginY = 220; 
-                const centerX = -this.camera.x / this.camera.zoom + (this.workspace.clientWidth / 2) / this.camera.zoom;
-                const centerY = -this.camera.y / this.camera.zoom + (this.workspace.clientHeight / 2) / this.camera.zoom;
-                const totalWidth = Math.max(0, layers.length - 1) * marginX;
-                const startX = centerX - (totalWidth / 2);
-
-                layers.forEach((layer, layerIndex) => {
-                    const x = startX + layerIndex * marginX;
-                    const totalHeight = Math.max(0, layer.length - 1) * marginY;
-                    let currentY = centerY - (totalHeight / 2);
-
-                    layer.forEach(nodeId => {
-                        const node = this.nodes[nodeId];
-                        if (!node) return;
-                        node.x = x; node.y = currentY;
-
-                        const el = this.nodesContainer.querySelector(`#node-${nodeId}`);
-                        if (el) {
-                            el.style.transition = 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
-                            el.style.transform = `translate(${node.x}px, ${node.y}px)`;
-                            setTimeout(() => { el.style.transition = ''; }, 550);
-                        }
-                        currentY += marginY;
-                    });
-                });
-
-                let animStart = null;
-                const animDuration = 500;
-                const animateLinks = (timestamp) => {
-                    if (!animStart) animStart = timestamp;
-                    const progress = timestamp - animStart;
-                    this.renderLinks();
-                    if (progress < animDuration) window.requestAnimationFrame(animateLinks);
-                    else this.renderLinks();
-                };
-                window.requestAnimationFrame(animateLinks);
-            }
-
-            clearSelection() {
-                this.selectedNodes.forEach(id => {
-                    const el = this.nodesContainer.querySelector(`#node-${id}`);
-                    if (el) el.classList.remove('selected');
-                });
-                this.selectedNodes.clear();
-                this.updateSelectionState();
-            }
-
-            updateSelectionState() {
-                if (this.workspace.id === 'main-workspace') {
-                    const btn = document.getElementById('btn-group-nodes');
-                    if (this.selectedNodes.size > 1) btn.classList.remove('hidden');
-                    else btn.classList.add('hidden');
-                }
-            }
-
-            groupSelection() {
-                if (this.selectedNodes.size < 2) return;
-                
-                let sumX = 0, sumY = 0;
-                const nodesToGroup = Array.from(this.selectedNodes);
-
-                nodesToGroup.forEach(id => {
-                    sumX += this.nodes[id].x; sumY += this.nodes[id].y;
-                });
-                const avgX = sumX / nodesToGroup.length;
-                const avgY = sumY / nodesToGroup.length;
-
-                nodesToGroup.forEach(id => this.deleteNode(id));
-                this.clearSelection();
-
-                const newId = this.createNode('subflow', avgX, avgY);
-                const newEl = this.nodesContainer.querySelector(`#node-${newId}`);
-                newEl.classList.add('shadow-[0_0_30px_#ea580c]');
-                setTimeout(() => newEl.classList.remove('shadow-[0_0_30px_#ea580c]'), 500);
-            }
-
-            toggleGrid(btnId) {
-                this.settings.gridVisible = !this.settings.gridVisible;
-                this.bg.style.opacity = this.settings.gridVisible ? 1 : 0;
-                if(btnId) {
-                    const btn = document.getElementById(btnId);
-                    if(btn) btn.className = this.settings.gridVisible 
-                        ? "p-2 bg-blue-900 border border-blue-500 text-blue-300 rounded hover:bg-blue-800 transition"
-                        : "p-2 bg-slate-800 border border-slate-600 text-slate-400 rounded hover:bg-slate-700 transition";
-                }
-            }
-
-            toggleSnap(btnId) {
-                this.settings.snap = !this.settings.snap;
-                if(btnId) {
-                    const btn = document.getElementById(btnId);
-                    if(btn) btn.className = this.settings.snap 
-                        ? "p-2 bg-purple-900 border border-purple-500 text-purple-300 rounded hover:bg-purple-800 transition"
-                        : "p-2 bg-slate-800 border border-slate-600 text-slate-400 rounded hover:bg-slate-700 transition";
-                }
-            }
-
-            clearAll() {
-                this.nodes = {}; this.links = []; this.selectedNodes.clear();
-                this.updateSelectionState();
-                this.nodesContainer.innerHTML = '';
-                this.nodesContainer.appendChild(this.selectionBox);
-                this.linksContainer.innerHTML = '';
-            }
-
-            createNode(type, x, y) {
-                const id = generateId();
-                const spec = NODE_TYPES[type];
-                
-                if (this.settings.snap) {
-                    x = Math.round(x / this.settings.snapSize) * this.settings.snapSize;
-                    y = Math.round(y / this.settings.snapSize) * this.settings.snapSize;
-                }
-
-                this.nodes[id] = { id, type, x, y, disabled: false };
-                
-                const el = document.createElement('div');
-                el.className = `node absolute rounded-lg border border-[var(--node-border)] bg-[var(--node-bg)] flex flex-col`;
-                el.id = `node-${id}`;
-                el.style.width = `${spec.width}px`;
-                el.style.transform = `translate(${x}px, ${y}px)`;
-
-                if (type === 'note') {
-                    el.classList.add('node-note');
-                    el.style.minHeight = '150px';
-                    el.innerHTML = `
-                        <div class="h-6 w-full cursor-move flex justify-between items-center px-2 node-header bg-black/20 border-b border-dashed border-slate-600">
-                            <span class="text-[10px] text-slate-500 uppercase font-bold pointer-events-none">ZONE DE NOTE / GROUPE</span>
-                            <div class="relative">
-                                <button class="settings-btn p-0.5 hover:bg-white/20 rounded transition-colors" data-node="${id}">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                                </button>
-                                <div class="settings-menu" id="menu-${id}">
-                                    <div class="settings-item toggle-disable" data-node="${id}">Désactiver</div>
-                                    <div class="settings-item text-red-400 delete-node" data-node="${id}">Supprimer</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex-1 p-2 w-full flex flex-col min-h-0">
-                            <textarea class="w-full h-full bg-transparent text-slate-300 outline-none resize-none font-sans text-sm" placeholder="Entrez vos notes ou englobez des briques ici..."></textarea>
-                        </div>
-                    `;
-                } else {
-                    let html = `
-                        <div class="h-8 rounded-t-lg ${spec.headerClass} flex justify-between items-center px-3 cursor-move node-header">
-                            <div class="font-bold text-xs tracking-wider text-white drop-shadow-md pointer-events-none">${spec.title}</div>
-                            <div class="relative">
-                                <button class="settings-btn p-1 hover:bg-white/20 rounded transition-colors" data-node="${id}">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                                        <circle cx="12" cy="12" r="3"></circle>
-                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                                    </svg>
-                                </button>
-                                <div class="settings-menu" id="menu-${id}">
-                                    <div class="settings-item toggle-disable" data-node="${id}">Désactiver</div>
-                                    <div class="settings-item text-red-400 delete-node" data-node="${id}">Supprimer</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="p-3 flex flex-col gap-2 relative">
-                    `;
-
-                    if (type === 'python') {
-                        html += `<input type="text" class="node-input mb-2 border-yellow-700 focus:border-yellow-500 font-bold" placeholder="Nom du script.py" value="main_process.py" title="Nom du script Python à exécuter">`;
-                    } else if (type === 'subflow') {
-                        html += `<input type="text" class="node-input mb-2 border-orange-700 focus:border-orange-500 font-bold subflow-name" placeholder="Nom du sous-processus" value="Traitement Secondaire">`;
-                        html += `<button class="w-full bg-slate-800 hover:bg-orange-700 border border-slate-600 rounded py-1.5 mb-2 text-xs font-bold transition-colors text-white shadow-sm flex items-center justify-center gap-2" onclick="openSubflowModal('${id}')">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg> 
-                            Éditer Workflow
-                        </button>`;
-                    } else if (type === 'operator') {
-                        html += `
-                            <select class="node-input mb-2">
-                                <option value="add">Addition (+)</option>
-                                <option value="sub">Soustraction (-)</option>
-                                <option value="mul">Multiplication (*)</option>
-                                <option value="div">Division (/)</option>
-                            </select>
-                        `;
-                    } else if (type === 'timing') {
-                        html += `<div class="flex items-center gap-2"><input type="number" class="node-input" value="1000" style="width: 80px"><span class="text-xs text-slate-400">ms</span></div>`;
-                    }
-
-                    html += `<div class="flex justify-between mt-1"><div class="flex flex-col gap-3">`;
-                    spec.inputs.forEach(inp => {
-                        html += `
-                            <div class="flex items-center gap-2 relative z-10">
-                                <div class="port port-in absolute -left-5" data-node="${id}" data-port="${inp.id}" data-type="in"></div>
-                                <span class="text-xs text-slate-300 pl-2 font-medium">${inp.label}</span>
-                            </div>
-                        `;
-                    });
-                    html += `</div><div class="flex flex-col gap-3 items-end">`;
-                    spec.outputs.forEach(out => {
-                        html += `
-                            <div class="flex items-center gap-2 relative z-10">
-                                <span class="text-xs text-slate-300 pr-2 font-medium">${out.label}</span>
-                                <div class="port port-out absolute -right-5" data-node="${id}" data-port="${out.id}" data-type="out"></div>
-                            </div>
-                        `;
-                    });
-                    html += `</div></div></div>`;
-
-                    el.innerHTML = html;
-                }
-
-                this.nodesContainer.appendChild(el);
-                this.attachNodeEvents(el, id);
-                return id;
-            }
-
-            deleteNode(id) {
-                this.links = this.links.filter(l => l.fromNode !== id && l.toNode !== id);
-                this.renderLinks();
-                const el = this.nodesContainer.querySelector(`#node-${id}`);
-                if(el) el.remove();
-                delete this.nodes[id];
-                this.selectedNodes.delete(id);
-                this.updateSelectionState();
-            }
-
-            toggleNodeDisable(id) {
-                this.nodes[id].disabled = !this.nodes[id].disabled;
-                const el = this.nodesContainer.querySelector(`#node-${id}`);
-                const toggleBtn = el.querySelector('.toggle-disable');
-                if (this.nodes[id].disabled) {
-                    el.classList.add('disabled');
-                    toggleBtn.innerText = 'Activer';
-                } else {
-                    el.classList.remove('disabled');
-                    toggleBtn.innerText = 'Désactiver';
-                }
-            }
-
-            createLink(fromNode, fromPort, toNode, toPort) {
-                if (this.links.find(l => l.fromNode === fromNode && l.fromPort === fromPort && l.toNode === toNode && l.toPort === toPort)) return;
-                this.links = this.links.filter(l => !(l.toNode === toNode && l.toPort === toPort));
-
-                const linkId = generateId();
-                this.links.push({ id: linkId, fromNode, fromPort, toNode, toPort });
-                this.renderLinks();
-            }
-
-            removeLink(id) {
-                this.links = this.links.filter(l => l.id !== id);
-                this.renderLinks();
-            }
-
-            updateTransform() {
-                this.canvas.style.transform = `translate(${this.camera.x}px, ${this.camera.y}px) scale(${this.camera.zoom})`;
-                if (this.settings.gridVisible) {
-                    const bgX = this.camera.x % (20 * this.camera.zoom);
-                    const bgY = this.camera.y % (20 * this.camera.zoom);
-                    this.bg.style.backgroundPosition = `${bgX}px ${bgY}px`;
-                    this.bg.style.backgroundSize = `${20 * this.camera.zoom}px ${20 * this.camera.zoom}px`;
-                }
-                this.renderLinks();
-            }
-
-            getPortCoords(nodeId, portId, type) {
-                const node = this.nodes[nodeId];
-                if (!node) return { x: 0, y: 0 };
-                
-                const portEl = this.nodesContainer.querySelector(`.port[data-node="${nodeId}"][data-port="${portId}"][data-type="${type}"]`);
-                if (!portEl) return { x: node.x, y: node.y };
-
-                const rect = portEl.getBoundingClientRect();
-                const canvasRect = this.nodesContainer.getBoundingClientRect();
-                
-                return {
-                    x: (rect.left - canvasRect.left + rect.width / 2) / this.camera.zoom,
-                    y: (rect.top - canvasRect.top + rect.height / 2) / this.camera.zoom
-                };
-            }
-
-            drawBezier(x1, y1, x2, y2) {
-                const dx = Math.abs(x2 - x1) * 0.5;
-                const ctrlX = Math.max(dx, 50);
-                return `M ${x1} ${y1} C ${x1 + ctrlX} ${y1}, ${x2 - ctrlX} ${y2}, ${x2} ${y2}`;
-            }
-
-            renderLinks() {
-                this.linksContainer.innerHTML = '';
-                this.links.forEach(link => {
-                    const start = this.getPortCoords(link.fromNode, link.fromPort, 'out');
-                    const end = this.getPortCoords(link.toNode, link.toPort, 'in');
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('class', 'link-path pointer-events-auto');
-                    path.setAttribute('d', this.drawBezier(start.x, start.y, end.x, end.y));
-                    
-                    path.addEventListener('mousedown', (e) => {
-                        e.stopPropagation();
-                        if(e.button === 0 && confirm("Supprimer ce lien ?")) this.removeLink(link.id);
-                    });
-                    this.linksContainer.appendChild(path);
-                });
-            }
-
-            initEvents() {
-                window.addEventListener('resize', () => this.updateTransform());
-
-                this.workspace.addEventListener('wheel', (e) => {
-                    e.preventDefault();
-                    const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
-                    const newZoom = Math.min(Math.max(0.2, this.camera.zoom * zoomDelta), 3);
-                    
-                    const rect = this.workspace.getBoundingClientRect();
-                    const mouseX = e.clientX - rect.left;
-                    const mouseY = e.clientY - rect.top;
-                    
-                    this.camera.x = mouseX - (mouseX - this.camera.x) * (newZoom / this.camera.zoom);
-                    this.camera.y = mouseY - (mouseY - this.camera.y) * (newZoom / this.camera.zoom);
-                    this.camera.zoom = newZoom;
-                    
-                    this.updateTransform();
-                });
-
-                this.workspace.addEventListener('mousedown', (e) => {
-                    this.workspace.querySelectorAll('.settings-menu.active').forEach(m => m.classList.remove('active'));
-
-                    if (e.button === 1 || (e.button === 0 && e.altKey)) {
-                        this.dragState = { type: 'panning', startX: e.clientX, startY: e.clientY, initX: this.camera.x, initY: this.camera.y };
-                        this.workspace.style.cursor = 'grabbing';
-                        return;
-                    }
-
-                    if (e.target === this.workspace || e.target === this.bg || e.target === this.canvas.querySelector('svg')) {
-                        if (!e.shiftKey) this.clearSelection();
-
-                        if (e.button === 0) {
-                            const rect = this.nodesContainer.getBoundingClientRect();
-                            const mouseX = (e.clientX - rect.left) / this.camera.zoom;
-                            const mouseY = (e.clientY - rect.top) / this.camera.zoom;
-                            
-                            this.dragState = {
-                                type: 'selecting',
-                                canvasStartX: mouseX,
-                                canvasStartY: mouseY
-                            };
-
-                            this.selectionBox.style.left = mouseX + 'px';
-                            this.selectionBox.style.top = mouseY + 'px';
-                            this.selectionBox.style.width = '0px';
-                            this.selectionBox.style.height = '0px';
-                            this.selectionBox.classList.remove('hidden');
-                        }
-                    }
-                });
-
-                window.addEventListener('mousemove', (e) => {
-                    if (!this.dragState.type) return;
-
-                    if (this.dragState.type === 'panning') {
-                        this.camera.x = this.dragState.initX + (e.clientX - this.dragState.startX);
-                        this.camera.y = this.dragState.initY + (e.clientY - this.dragState.startY);
-                        this.updateTransform();
-                    } 
-                    else if (this.dragState.type === 'selecting') {
-                        const rect = this.nodesContainer.getBoundingClientRect();
-                        const mouseX = (e.clientX - rect.left) / this.camera.zoom;
-                        const mouseY = (e.clientY - rect.top) / this.camera.zoom;
-
-                        const x = Math.min(this.dragState.canvasStartX, mouseX);
-                        const y = Math.min(this.dragState.canvasStartY, mouseY);
-                        const w = Math.abs(mouseX - this.dragState.canvasStartX);
-                        const h = Math.abs(mouseY - this.dragState.canvasStartY);
-
-                        this.selectionBox.style.left = x + 'px';
-                        this.selectionBox.style.top = y + 'px';
-                        this.selectionBox.style.width = w + 'px';
-                        this.selectionBox.style.height = h + 'px';
-
-                        Object.values(this.nodes).forEach(node => {
-                            const nodeEl = this.nodesContainer.querySelector(`#node-${node.id}`);
-                            if(!nodeEl) return;
-                            const nw = nodeEl.offsetWidth;
-                            const nh = nodeEl.offsetHeight;
-
-                            if (x < node.x + nw && x + w > node.x && y < node.y + nh && y + h > node.y) {
-                                if(!this.selectedNodes.has(node.id)) {
-                                    nodeEl.classList.add('selected');
-                                    this.selectedNodes.add(node.id);
-                                }
-                            } else if (!e.shiftKey) { 
-                                nodeEl.classList.remove('selected');
-                                this.selectedNodes.delete(node.id);
-                            }
-                        });
-                        this.updateSelectionState();
-                    }
-                    else if (this.dragState.type === 'nodes') {
-                        let dx = (e.clientX - this.dragState.startX) / this.camera.zoom;
-                        let dy = (e.clientY - this.dragState.startY) / this.camera.zoom;
-                        
-                        if (this.settings.snap) {
-                            dx = Math.round(dx / this.settings.snapSize) * this.settings.snapSize;
-                            dy = Math.round(dy / this.settings.snapSize) * this.settings.snapSize;
-                        }
-
-                        this.dragState.nodes.forEach(n => {
-                            const node = this.nodes[n.id];
-                            node.x = n.initX + dx;
-                            node.y = n.initY + dy;
-                            this.nodesContainer.querySelector(`#node-${node.id}`).style.transform = `translate(${node.x}px, ${node.y}px)`;
-                        });
-                        this.renderLinks();
-                    }
-                    else if (this.dragState.type === 'link') {
-                        const rect = this.nodesContainer.getBoundingClientRect();
-                        const mouseX = (e.clientX - rect.left) / this.camera.zoom;
-                        const mouseY = (e.clientY - rect.top) / this.camera.zoom;
-                        const start = this.getPortCoords(this.dragState.nodeId, this.dragState.portId, 'out');
-                        this.tempLink.style.display = 'block';
-                        this.tempLink.setAttribute('d', this.drawBezier(start.x, start.y, mouseX, mouseY));
-                    }
-                });
-
-                window.addEventListener('mouseup', (e) => {
-                    if (!this.dragState.type) return;
-
-                    if (this.dragState.type === 'panning') {
-                        this.workspace.style.cursor = 'crosshair';
-                    }
-                    else if (this.dragState.type === 'selecting') {
-                        this.selectionBox.classList.add('hidden');
-                    }
-                    else if (this.dragState.type === 'link') {
-                        this.tempLink.style.display = 'none';
-                        const target = document.elementFromPoint(e.clientX, e.clientY);
-                        if (target && target.classList.contains('port-in') && this.workspace.contains(target)) {
-                            const toNode = target.getAttribute('data-node');
-                            const toPort = target.getAttribute('data-port');
-                            this.createLink(this.dragState.nodeId, this.dragState.portId, toNode, toPort);
-                        }
-                    }
-                    this.dragState.type = null;
-                });
-            }
-
-            attachNodeEvents(nodeEl, id) {
-                const header = nodeEl.querySelector('.node-header');
-                
-                header.addEventListener('mousedown', (e) => {
-                    if(e.target.closest('.settings-btn') || e.target.closest('.settings-menu')) return;
-                    
-                    if (this.selectedNodes.has(id)) {
-                        this.selectedNodes.forEach(nid => this.nodesContainer.appendChild(this.nodesContainer.querySelector(`#node-${nid}`)));
-                    } else {
-                        this.nodesContainer.appendChild(nodeEl);
-                    }
-
-                    if (e.shiftKey) {
-                        if (this.selectedNodes.has(id)) {
-                            nodeEl.classList.remove('selected');
-                            this.selectedNodes.delete(id);
-                        } else {
-                            nodeEl.classList.add('selected');
-                            this.selectedNodes.add(id);
-                        }
-                    } else {
-                        if (!this.selectedNodes.has(id)) {
-                            this.clearSelection();
-                            nodeEl.classList.add('selected');
-                            this.selectedNodes.add(id);
-                        }
-                    }
-                    this.updateSelectionState();
-
-                    if (e.button === 0 && !e.altKey && this.selectedNodes.has(id)) {
-                        this.dragState = {
-                            type: 'nodes',
-                            startX: e.clientX,
-                            startY: e.clientY,
-                            nodes: Array.from(this.selectedNodes).map(nId => ({
-                                id: nId,
-                                initX: this.nodes[nId].x,
-                                initY: this.nodes[nId].y
-                            }))
-                        };
-                        e.stopPropagation();
-                    }
-                });
-
-                const btn = nodeEl.querySelector('.settings-btn');
-                const menu = nodeEl.querySelector('.settings-menu');
-                btn.addEventListener('mousedown', (e) => {
-                    e.stopPropagation();
-                    const isActive = menu.classList.contains('active');
-                    this.workspace.querySelectorAll('.settings-menu.active').forEach(m => m.classList.remove('active'));
-                    if (!isActive) menu.classList.add('active');
-                });
-
-                menu.querySelector('.delete-node').addEventListener('mousedown', (e) => {
-                    e.stopPropagation();
-                    this.deleteNode(id);
-                });
-
-                menu.querySelector('.toggle-disable').addEventListener('mousedown', (e) => {
-                    e.stopPropagation();
-                    this.toggleNodeDisable(id);
-                    menu.classList.remove('active');
-                });
-
-                nodeEl.querySelectorAll('.port-out').forEach(port => {
-                    port.addEventListener('mousedown', (e) => {
-                        e.stopPropagation();
-                        if (e.button === 0) {
-                            const portId = port.getAttribute('data-port');
-                            this.dragState = { type: 'link', nodeId: id, portId: portId };
-                        }
-                    });
-                });
-            }
-        }
-
-        let modalEditor = null;
-        function openSubflowModal(nodeId) {
-            const modal = document.getElementById('subflow-modal');
-            const nameInput = document.querySelector(`#main-workspace #node-${nodeId} .subflow-name`);
-            document.getElementById('modal-breadcrumb-current').innerText = nameInput ? nameInput.value : 'Sous-Processus';
-            modal.classList.remove('hidden');
-            
-            if (!modalEditor) {
-                modalEditor = new WorkflowEditor('modal-workspace');
-                const nStart = modalEditor.createNode('start', -200, 0);
-                const nEnd = modalEditor.createNode('start', 200, 0);
-                document.querySelector(`#modal-workspace #node-${nStart} .node-header div`).innerText = 'ENTRÉE';
-                document.querySelector(`#modal-workspace #node-${nEnd} .node-header div`).innerText = 'SORTIE';
-                document.querySelector(`#modal-workspace #node-${nEnd} .port-out`).classList.replace('port-out', 'port-in');
-            }
-        }
-        function closeSubflowModal() { document.getElementById('subflow-modal').classList.add('hidden'); }
-
-        // --- REAL HARDWARE MONITORING ---
-        class HardwareMonitor {
-            constructor() {
-                // Fetch real system capacities where possible
-                this.cores = navigator.hardwareConcurrency || 8;
-                this.maxRam = navigator.deviceMemory || 16;
-                this.gpuName = this.getRealGPUName();
-
-                // Initial Display
-                document.getElementById('mon-cpu-spec').innerText = `${this.cores} Cœurs (Logiques)`;
-                document.getElementById('mon-ram-spec').innerText = `~${this.maxRam} GB Max`;
-                document.getElementById('mon-gpu-name').innerText = this.gpuName;
-
-                // Simulated load values (Browser sandbox prevents real-time load/temp reads)
-                this.cpu = 10; this.ram = 25; this.gpu = 2; this.temp = 45;
-                
-                setInterval(() => this.update(), 1000);
-            }
-
-            getRealGPUName() {
-                try {
-                    const canvas = document.createElement('canvas');
-                    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                    if (gl) {
-                        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                        if (debugInfo) {
-                            let gpu = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                            // Clean up verbose WebGL strings (e.g. "ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11...)")
-                            gpu = gpu.replace(/ANGLE \([^,]+, /, '') // Remove ANGLE vendor prefix
-                                     .replace(/Direct3D.*/, '')      // Remove Direct3D suffix
-                                     .replace(/OpenGL.*/, '')        // Remove OpenGL suffix
-                                     .replace(/\)$/, '')             // Remove trailing parenthesis
-                                     .trim();
-                            return gpu || "GPU Dédié Inconnu";
-                        }
-                    }
-                } catch(e) { console.error("Could not read GPU via WebGL", e); }
-                return "GPU Non Détectable";
-            }
-
-            update() {
-                // Simulate load fluctuations
-                this.cpu = Math.max(1, Math.min(100, this.cpu + (Math.random() * 20 - 10)));
-                this.gpu = Math.max(0, Math.min(100, this.gpu + (Math.random() * 10 - 5)));
-                this.temp = 40 + (this.cpu * 0.4) + (Math.random() * 2 - 1);
-                if(Math.random() > 0.7) this.ram += (Math.random() * 2 - 1);
-                this.ram = Math.max(4, Math.min(100, this.ram)); // Ram as %
-
-                this.setRing('cpu', this.cpu, `${this.cpu.toFixed(0)}%`);
-                this.setRing('ram', this.ram, `${((this.ram/100)*this.maxRam).toFixed(1)}GB`);
-                this.setRing('gpu', this.gpu, `${this.gpu.toFixed(0)}%`);
-                this.setRing('temp', this.temp, `${this.temp.toFixed(0)}°`);
-            }
-
-            setRing(id, percent, text) {
-                document.getElementById(`mon-${id}-val`).innerText = text;
-                const ring = document.getElementById(`mon-${id}-ring`);
-                
-                // Calculate SVG stroke-dasharray (Full circle is 100)
-                ring.setAttribute('stroke-dasharray', `${percent}, 100`);
-                
-                // Color scaling
-                ring.classList.remove('stroke-red-500', 'stroke-yellow-500', 'stroke-blue-500', 'stroke-purple-500', 'stroke-teal-500', 'stroke-orange-500');
-                if(percent > 85) ring.classList.add('stroke-red-500');
-                else if(percent > 65) ring.classList.add('stroke-yellow-500');
-                else {
-                    // Default colors based on ID
-                    if(id === 'cpu') ring.classList.add('stroke-blue-500');
-                    if(id === 'ram') ring.classList.add('stroke-purple-500');
-                    if(id === 'gpu') ring.classList.add('stroke-teal-500');
-                    if(id === 'temp') ring.classList.add('stroke-orange-500');
-                }
-            }
-        }
-
-        const mainEditor = new WorkflowEditor('main-workspace');
-        mainEditor.buildDemoScene();
-        const monitor = new HardwareMonitor();
-    </script>
+    <hr class="sep">
+
+    <!-- ── 2. Docstring détaillée ── -->
+    <div class="section">
+        <div class="section-label">02 — Docstring</div>
+        <h2>Format de la docstring <code>@workflow</code></h2>
+        <p>Cinq balises reconnues par NEXUS. Les blocs <code>@workflow:input</code> et <code>@workflow:output</code> sont du <strong>JSON strict</strong>.</p>
+
+<pre><code><span class="s">"""</span>
+<span class="kw">@workflow:name:</span> <span class="s">Conversion PDF en Images</span>           <span class="ann">Titre affiché dans le nœud</span>
+
+<span class="kw">@workflow:description:</span> <span class="s">Convertit chaque page d'un</span>
+<span class="s">    PDF en images PNG ou JPEG.</span>                      <span class="ann">Description (libre)</span>
+
+<span class="kw">@workflow:input:</span> <span class="op">{</span>
+    <span class="s">"pdf_path"</span><span class="op">:</span>   <span class="op">{</span><span class="s">"type"</span><span class="op">:</span> <span class="s">"string"</span><span class="op">,</span> <span class="s">"required"</span><span class="op">:</span> <span class="bk">true</span><span class="op">,</span>  <span class="s">"description"</span><span class="op">:</span> <span class="s">"Chemin du PDF"</span><span class="op">},</span>
+    <span class="s">"output_dir"</span><span class="op">:</span> <span class="op">{</span><span class="s">"type"</span><span class="op">:</span> <span class="s">"string"</span><span class="op">,</span> <span class="s">"default"</span><span class="op">:</span> <span class="s">"./output"</span><span class="op">,</span> <span class="s">"description"</span><span class="op">:</span> <span class="s">"Dossier de sortie"</span><span class="op">},</span>
+    <span class="s">"format"</span><span class="op">:</span>     <span class="op">{</span><span class="s">"type"</span><span class="op">:</span> <span class="s">"list"</span><span class="op">,</span>   <span class="s">"options"</span><span class="op">: [</span><span class="s">"PNG"</span><span class="op">,</span><span class="s">"JPEG"</span><span class="op">],</span> <span class="s">"default"</span><span class="op">:</span> <span class="s">"PNG"</span><span class="op">},</span>
+    <span class="s">"dpi"</span><span class="op">:</span>        <span class="op">{</span><span class="s">"type"</span><span class="op">:</span> <span class="s">"int"</span><span class="op">,</span>    <span class="s">"min"</span><span class="op">:</span> <span class="vl">72</span><span class="op">,</span> <span class="s">"max"</span><span class="op">:</span> <span class="vl">600</span><span class="op">,</span> <span class="s">"default"</span><span class="op">:</span> <span class="vl">150</span><span class="op">}</span>
+<span class="op">}</span>
+
+<span class="kw">@workflow:output:</span> <span class="op">{</span>
+    <span class="s">"images"</span><span class="op">:</span> <span class="op">{</span><span class="s">"type"</span><span class="op">:</span> <span class="s">"array"</span><span class="op">,</span>  <span class="s">"description"</span><span class="op">:</span> <span class="s">"Chemins des images générées"</span><span class="op">},</span>
+    <span class="s">"count"</span><span class="op">:</span>  <span class="op">{</span><span class="s">"type"</span><span class="op">:</span> <span class="s">"int"</span><span class="op">,</span>    <span class="s">"description"</span><span class="op">:</span> <span class="s">"Nombre d'images produites"</span><span class="op">}</span>
+<span class="op">}</span>
+
+<span class="kw">@workflow:dependencies:</span> <span class="s">pdf2image,Pillow</span>          <span class="ann">pip install — séparés par virgules</span>
+<span class="s">"""</span></code></pre>
+    </div>
+
+    <hr class="sep">
+
+    <!-- ── 3. Types d'entrée ── -->
+    <div class="section">
+        <div class="section-label">03 — Entrées</div>
+        <h2>Types de paramètres d'entrée</h2>
+        <p>Chaque clé de <code>@workflow:input</code> génère un port et un widget dans le nœud NEXUS.</p>
+
+        <div class="types-grid">
+            <div class="type-card">
+                <div class="type-name tn-str">string</div>
+                <div class="type-desc">Texte libre, chemin, URL, clé API…</div>
+                <div class="type-props">
+                    <span>default</span> · <span>required</span>
+                    <br><code style="font-size:.7rem;">"default": "valeur"</code>
+                </div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-int">int</div>
+                <div class="type-desc">Entier avec bornes min/max optionnelles.</div>
+                <div class="type-props">
+                    <span>min</span> · <span>max</span> · <span>default</span>
+                    <br><code style="font-size:.7rem;">"min": 1, "max": 100, "default": 10</code>
+                </div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-double">double</div>
+                <div class="type-desc">Décimal (float). Coefficient, score, ratio…</div>
+                <div class="type-props">
+                    <span>min</span> · <span>max</span> · <span>default</span>
+                    <br><code style="font-size:.7rem;">"default": 1.5</code>
+                </div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-bool">bool</div>
+                <div class="type-desc">Vrai / Faux. Sélecteur dans le nœud.</div>
+                <div class="type-props">
+                    <span>default</span> (<code>true</code> ou <code>false</code>)
+                    <br><code style="font-size:.7rem;">"default": false</code>
+                </div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-list">list</div>
+                <div class="type-desc">Choix parmi une liste fixe (menu déroulant).</div>
+                <div class="type-props">
+                    <span>options</span> · <span>default</span>
+                    <br><code style="font-size:.7rem;">"options": ["PNG","JPEG","TIFF"]</code>
+                </div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-file">file</div>
+                <div class="type-desc">Chemin d'un fichier. Bouton 📂 dans le nœud.</div>
+                <div class="type-props">
+                    <span>default</span>
+                    <br>Python reçoit un <code>dict</code> :<br>
+                    <code style="font-size:.67rem;">chemin_complet, fichier, emplacement</code>
+                </div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-folder">folder</div>
+                <div class="type-desc">Chemin d'un dossier. Bouton 📂 dans le nœud.</div>
+                <div class="type-props">
+                    <span>default</span>
+                    <br>Python reçoit un <code>str</code>
+                    <br><code style="font-size:.7rem;">"default": "./output"</code>
+                </div>
+            </div>
+        </div>
+
+        <h3>Lire les paramètres dans la fonction</h3>
+        <p>Utilisez toujours <code>.get()</code> avec une valeur par défaut — NEXUS peut ne pas envoyer toutes les clés.</p>
+
+<pre><code><span class="k">def</span> <span class="fn">ma_brique</span><span class="op">(</span><span class="n">params</span><span class="op">:</span> <span class="t">dict</span><span class="op">)</span> <span class="op">-></span> <span class="t">dict</span><span class="op">:</span>
+    <span class="c"># string</span>
+    <span class="n">texte</span>      <span class="op">=</span> <span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"texte"</span><span class="op">,</span>      <span class="s">""</span><span class="op">)</span>
+
+    <span class="c"># int / double — cast explicite conseillé</span>
+    <span class="n">nombre</span>     <span class="op">=</span> <span class="fn">int</span><span class="op">(</span><span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"nombre"</span><span class="op">,</span>    <span class="vl">10</span><span class="op">))</span>
+    <span class="n">coeff</span>      <span class="op">=</span> <span class="fn">float</span><span class="op">(</span><span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"coeff"</span><span class="op">,</span>    <span class="vl">1.0</span><span class="op">))</span>
+
+    <span class="c"># bool — JSON envoie True/False Python</span>
+    <span class="n">actif</span>      <span class="op">=</span> <span class="fn">bool</span><span class="op">(</span><span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"actif"</span><span class="op">,</span>    <span class="bk">True</span><span class="op">))</span>
+
+    <span class="c"># list → string (valeur choisie dans le menu)</span>
+    <span class="n">format_out</span> <span class="op">=</span> <span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"format_out"</span><span class="op">,</span> <span class="s">"PNG"</span><span class="op">)</span>
+
+    <span class="c"># file → dict avec chemin_complet / fichier / emplacement</span>
+    <span class="n">finfo</span>      <span class="op">=</span> <span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"fichier"</span><span class="op">,</span>    <span class="op">{})</span>
+    <span class="n">chemin</span>     <span class="op">=</span> <span class="n">finfo</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"chemin_complet"</span><span class="op">,</span> <span class="s">""</span><span class="op">)</span> <span class="k">if</span> <span class="fn">isinstance</span><span class="op">(</span><span class="n">finfo</span><span class="op">,</span> <span class="t">dict</span><span class="op">)</span> <span class="k">else</span> <span class="n">finfo</span>
+
+    <span class="c"># folder → string</span>
+    <span class="n">dossier</span>    <span class="op">=</span> <span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"dossier"</span><span class="op">,</span>   <span class="s">"./output"</span><span class="op">)</span></code></pre>
+
+        <div class="callout c-tip">
+            <div class="callout-icon">💡</div>
+            <div>
+                <strong>Imports lourds dans la fonction</strong> — placez <code>import numpy</code>,
+                <code>from PIL import Image</code>, etc. <em>à l'intérieur</em> de la fonction.
+                NEXUS parse la docstring sans créer d'environnement d'exécution.
+            </div>
+        </div>
+    </div>
+
+    <hr class="sep">
+
+    <!-- ── 4. Types de sortie ── -->
+    <div class="section">
+        <div class="section-label">04 — Sorties</div>
+        <h2>Types de retour (<code>@workflow:output</code>)</h2>
+        <p>Le <code>dict</code> retourné doit contenir exactement les clés déclarées dans <code>@workflow:output</code>.</p>
+
+        <div class="types-grid">
+            <div class="type-card">
+                <div class="type-name tn-str">string</div>
+                <div class="type-desc">Texte, chemin, message de statut.</div>
+                <div class="type-props"><code style="font-size:.7rem;">"resultat": "texte produit"</code></div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-int">int</div>
+                <div class="type-desc">Compteur, code retour, nombre d'éléments.</div>
+                <div class="type-props"><code style="font-size:.7rem;">"count": 42</code></div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-float">float</div>
+                <div class="type-desc">Score, durée, ratio, pourcentage.</div>
+                <div class="type-props"><code style="font-size:.7rem;">"score": 0.97</code></div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-bool">bool</div>
+                <div class="type-desc">Succès / échec du traitement.</div>
+                <div class="type-props"><code style="font-size:.7rem;">"succes": True</code></div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-array">array</div>
+                <div class="type-desc">Liste Python (strings, dicts, nombres…).</div>
+                <div class="type-props"><code style="font-size:.7rem;">"items": ["a", "b", "c"]</code></div>
+            </div>
+            <div class="type-card">
+                <div class="type-name tn-object">object</div>
+                <div class="type-desc">Dictionnaire Python arbitraire.</div>
+                <div class="type-props"><code style="font-size:.7rem;">"meta": {"key": "val"}</code></div>
+            </div>
+        </div>
+
+<pre><code><span class="c"># Les clés du return doivent correspondre EXACTEMENT à @workflow:output</span>
+<span class="k">return</span> <span class="op">{</span>
+    <span class="s">"images"</span><span class="op">:</span>     <span class="n">liste_chemins</span><span class="op">,</span>     <span class="c"># array</span>
+    <span class="s">"count"</span><span class="op">:</span>      <span class="fn">len</span><span class="op">(</span><span class="n">liste_chemins</span><span class="op">),</span>  <span class="c"># int</span>
+    <span class="s">"output_dir"</span><span class="op">:</span> <span class="n">dossier_out</span><span class="op">,</span>       <span class="c"># string</span>
+<span class="op">}</span></code></pre>
+
+        <div class="callout c-error">
+            <div class="callout-icon">🚫</div>
+            <div>
+                <strong>Pas de <code>print()</code> parasite.</strong>
+                NEXUS capture <code>stdout</code> pour lire le JSON retourné.
+                Tout affichage hors du bloc <code>__main__</code> fera échouer le parsing.
+                Utilisez <code>sys.stderr.write()</code> pour les logs de débogage.
+            </div>
+        </div>
+    </div>
+
+    <hr class="sep">
+
+    <!-- ── 5. Exemple complet ── -->
+    <div class="section">
+        <div class="section-label">05 — Exemple complet</div>
+        <h2>Script fonctionnel — <code>scripts/modele.py</code></h2>
+        <p>Exemple sans dépendance externe. Testez avec <code>python scripts/modele.py</code>.</p>
+
+<pre><code><span class="s">"""
+@workflow:name: Transformateur de Données
+@workflow:description: Transforme et répète un texte selon des options.
+@workflow:input: {
+    "texte":       {"type": "string", "default": "Bonjour !",           "required": true,  "description": "Texte source"},
+    "repetitions": {"type": "int",    "min": 1, "max": 20, "default": 3,               "description": "Nombre de répétitions"},
+    "majuscules":  {"type": "bool",   "default": false,                                "description": "Mettre en majuscules"},
+    "separateur":  {"type": "list",   "options": [" | "," / "," — "],  "default": " | ", "description": "Séparateur"},
+    "dossier_out": {"type": "folder", "default": "./output",                            "description": "Dossier de sortie"}
+}
+@workflow:output: {
+    "texte_final":   {"type": "string", "description": "Texte transformé"},
+    "mots":          {"type": "array",  "description": "Mots uniques du texte source"},
+    "nb_caracteres": {"type": "int",    "description": "Longueur du texte final"},
+    "fichier":       {"type": "string", "description": "Chemin du fichier résultat"}
+}
+@workflow:dependencies:
+"""</span>
+
+<span class="k">import</span> <span class="n">os</span><span class="op">,</span> <span class="n">json</span><span class="op">,</span> <span class="n">re</span>
+<span class="k">from</span> <span class="n">pathlib</span> <span class="k">import</span> <span class="n">Path</span>
+<span class="k">from</span> <span class="n">datetime</span> <span class="k">import</span> <span class="n">datetime</span>
+
+
+<span class="k">def</span> <span class="fn">transformateur_de_donnees</span><span class="op">(</span><span class="n">params</span><span class="op">:</span> <span class="t">dict</span><span class="op">)</span> <span class="op">-></span> <span class="t">dict</span><span class="op">:</span>
+    <span class="c"># ── Lecture des paramètres ────────────────────────────────────</span>
+    <span class="n">texte</span>       <span class="op">=</span> <span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"texte"</span><span class="op">,</span>       <span class="s">"Bonjour !"</span><span class="op">)</span>
+    <span class="n">repetitions</span> <span class="op">=</span> <span class="fn">int</span><span class="op">(</span><span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"repetitions"</span><span class="op">,</span> <span class="vl">3</span><span class="op">))</span>
+    <span class="n">majuscules</span>  <span class="op">=</span> <span class="fn">bool</span><span class="op">(</span><span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"majuscules"</span><span class="op">,</span>  <span class="bk">False</span><span class="op">))</span>
+    <span class="n">separateur</span>  <span class="op">=</span> <span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"separateur"</span><span class="op">,</span>  <span class="s">" | "</span><span class="op">)</span>
+    <span class="n">dossier_out</span> <span class="op">=</span> <span class="n">params</span><span class="op">.</span><span class="fn">get</span><span class="op">(</span><span class="s">"dossier_out"</span><span class="op">,</span> <span class="s">"./output"</span><span class="op">)</span>
+
+    <span class="c"># ── Validation ───────────────────────────────────────────────</span>
+    <span class="k">if not</span> <span class="n">texte</span><span class="op">.</span><span class="fn">strip</span><span class="op">():</span>
+        <span class="k">raise</span> <span class="t">ValueError</span><span class="op">(</span><span class="s">"Le paramètre 'texte' ne peut pas être vide."</span><span class="op">)</span>
+
+    <span class="c"># ── Traitement ───────────────────────────────────────────────</span>
+    <span class="n">occurrence</span>   <span class="op">=</span> <span class="n">texte</span><span class="op">.</span><span class="fn">upper</span><span class="op">()</span> <span class="k">if</span> <span class="n">majuscules</span> <span class="k">else</span> <span class="n">texte</span>
+    <span class="n">texte_final</span>  <span class="op">=</span> <span class="n">separateur</span><span class="op">.</span><span class="fn">join</span><span class="op">([</span><span class="n">occurrence</span><span class="op">]</span> <span class="op">*</span> <span class="n">repetitions</span><span class="op">)</span>
+    <span class="n">mots</span>         <span class="op">=</span> <span class="fn">sorted</span><span class="op">(</span><span class="fn">set</span><span class="op">(</span><span class="n">re</span><span class="op">.</span><span class="fn">findall</span><span class="op">(</span><span class="s">r'\b\w+\b'</span><span class="op">,</span> <span class="n">texte</span><span class="op">.</span><span class="fn">lower</span><span class="op">())))</span>
+
+    <span class="c"># ── Écriture fichier ─────────────────────────────────────────</span>
+    <span class="n">Path</span><span class="op">(</span><span class="n">dossier_out</span><span class="op">).</span><span class="fn">mkdir</span><span class="op">(</span><span class="n">parents</span><span class="op">=</span><span class="bk">True</span><span class="op">,</span> <span class="n">exist_ok</span><span class="op">=</span><span class="bk">True</span><span class="op">)</span>
+    <span class="n">fichier</span> <span class="op">=</span> <span class="n">os</span><span class="op">.</span><span class="n">path</span><span class="op">.</span><span class="fn">join</span><span class="op">(</span><span class="n">dossier_out</span><span class="op">,</span> <span class="s">f"resultat_<span class="op">{</span><span class="n">datetime</span><span class="op">.</span><span class="fn">now</span><span class="op">().</span><span class="fn">strftime</span><span class="op">(</span><span class="s">'%H%M%S'</span><span class="op">)</span><span class="op">}</span>.txt"</span><span class="op">)</span>
+    <span class="n">Path</span><span class="op">(</span><span class="n">fichier</span><span class="op">).</span><span class="fn">write_text</span><span class="op">(</span><span class="n">texte_final</span><span class="op">,</span> <span class="n">encoding</span><span class="op">=</span><span class="s">"utf-8"</span><span class="op">)</span>
+
+    <span class="c"># ── Retour ────────────────────────────────────────────────────</span>
+    <span class="k">return</span> <span class="op">{</span>
+        <span class="s">"texte_final"</span><span class="op">:</span>   <span class="n">texte_final</span><span class="op">,</span>
+        <span class="s">"mots"</span><span class="op">:</span>          <span class="n">mots</span><span class="op">,</span>
+        <span class="s">"nb_caracteres"</span><span class="op">:</span> <span class="fn">len</span><span class="op">(</span><span class="n">texte_final</span><span class="op">),</span>
+        <span class="s">"fichier"</span><span class="op">:</span>       <span class="n">fichier</span><span class="op">,</span>
+    <span class="op">}</span>
+
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="op">==</span> <span class="s">"__main__"</span><span class="op">:</span>
+    <span class="k">import</span> <span class="n">sys</span>
+    <span class="n">data</span> <span class="op">=</span> <span class="n">json</span><span class="op">.</span><span class="fn">loads</span><span class="op">(</span><span class="n">sys</span><span class="op">.</span><span class="n">argv</span><span class="op">[</span><span class="vl">1</span><span class="op">])</span> <span class="k">if</span> <span class="fn">len</span><span class="op">(</span><span class="n">sys</span><span class="op">.</span><span class="n">argv</span><span class="op">)</span> <span class="op">></span> <span class="vl">1</span> <span class="k">else</span> <span class="op">{}</span>
+    <span class="fn">print</span><span class="op">(</span><span class="n">json</span><span class="op">.</span><span class="fn">dumps</span><span class="op">(</span><span class="fn">transformateur_de_donnees</span><span class="op">(</span><span class="n">data</span><span class="op">),</span> <span class="n">ensure_ascii</span><span class="op">=</span><span class="bk">False</span><span class="op">,</span> <span class="n">indent</span><span class="op">=</span><span class="vl">2</span><span class="op">))</span></code></pre>
+    </div>
+
+    <hr class="sep">
+
+    <!-- ── 6. Checklist ── -->
+    <div class="section">
+        <div class="section-label">06 — Checklist</div>
+        <h2>Avant de charger dans NEXUS</h2>
+        <div class="check">
+            <div class="check-row"><div class="check-box"></div><span>La docstring est le <strong style="color:#e2e8f0">tout premier élément</strong> du fichier (avant tout <code>import</code>)</span></div>
+            <div class="check-row"><div class="check-box"></div><span>Les blocs JSON (<code>@workflow:input</code> / <code>@workflow:output</code>) sont valides — guillemets doubles, pas de virgule finale</span></div>
+            <div class="check-row"><div class="check-box"></div><span>Les clés du <code>return</code> correspondent <strong style="color:#e2e8f0">exactement</strong> aux noms dans <code>@workflow:output</code></span></div>
+            <div class="check-row"><div class="check-box"></div><span>Les imports lourds (<code>numpy</code>, <code>PIL</code>, <code>torch</code>…) sont <strong style="color:#e2e8f0">dans</strong> la fonction, pas au niveau module</span></div>
+            <div class="check-row"><div class="check-box"></div><span>Aucun <code>print()</code> hors du bloc <code>__main__</code></span></div>
+            <div class="check-row"><div class="check-box"></div><span>Test CLI réussi : <code>python mon_script.py '{}'</code> → affiche un JSON valide</span></div>
+            <div class="check-row"><div class="check-box"></div><span>Dépendances listées dans <code>@workflow:dependencies</code> (séparées par virgules)</span></div>
+        </div>
+    </div>
+
+    <footer>
+        NEXUS &nbsp;·&nbsp; <a href="index.html" style="color:#3b82f6;">Retour à l'éditeur</a>
+    </footer>
+
+</div>
 </body>
 </html>

@@ -19,6 +19,7 @@ class WorkflowEditor {
         this._historyIndex  = -1;   // pointeur courant
         this._historyPaused = false; // true pendant fromJSON / opérations en lot
 
+
         this.dragState = { type: null };
 
         this.workspace      = document.getElementById(containerId);
@@ -81,3 +82,6 @@ class WorkflowEditor {
         if (this._onChange) this._onChange();
     }
 }
+
+// Presse-papiers global partagé entre toutes les instances (main + modal)
+WorkflowEditor._clipboard = null;

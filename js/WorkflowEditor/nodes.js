@@ -350,6 +350,85 @@ Object.assign(WorkflowEditor.prototype, {
         setTimeout(() => newEl?.classList.remove('shadow-[0_0_30px_#ea580c]'), 500);
     },
 
+    // ── Presse-papiers ────────────────────────────────────────────────────────
+
+    selectAll() {
+        Object.keys(this.nodes).forEach(id => {
+            this.selectedNodes.add(id);
+            const el = this.nodesContainer.querySelector(`#node-${id}`);
+            if (el) el.classList.add('selected');
+        });
+        this._updateSelectionState();
+    },
+
+    _copySelection() {
+        if (this.selectedNodes.size === 0) return false;
+        const ids = new Set(this.selectedNodes);
+
+        // Capture les valeurs en cours dans le DOM (label, etc.)
+        const nodesCopy = [];
+        ids.forEach(id => {
+            const nd = this.nodes[id];
+            if (!nd) return;
+            const el = this.nodesContainer.querySelector(`#node-${id}`);
+            let label = nd.label;
+            if (el) {
+                const li = el.querySelector('.node-label-input');
+                if (li) label = li.value;
+            }
+            nodesCopy.push({ ...nd, label });
+        });
+
+        const linksCopy = this.links
+            .filter(l => ids.has(l.fromNode) && ids.has(l.toNode))
+            .map(l => ({ ...l }));
+
+        WorkflowEditor._clipboard = { nodes: nodesCopy, links: linksCopy, pasteCount: 0 };
+        return true;
+    },
+
+    _cutSelection() {
+        if (!this._copySelection()) return;
+        const ids = Array.from(this.selectedNodes);
+        this._historyPaused = true;
+        ids.forEach(id => this.deleteNode(id));
+        this._historyPaused = false;
+        this._saveSnapshot();
+        if (this._onChange) this._onChange();
+    },
+
+    _pasteSelection() {
+        if (!WorkflowEditor._clipboard || WorkflowEditor._clipboard.nodes.length === 0) return;
+        WorkflowEditor._clipboard.pasteCount++;
+        const step   = WorkflowEditor._clipboard.pasteCount * 40;
+
+        const idMap = {};
+        this.clearSelection();
+        this._historyPaused = true;
+
+        WorkflowEditor._clipboard.nodes.forEach(nd => {
+            const newId = this.createNode(nd.type, nd.x + step, nd.y + step, null, { ...nd });
+            if (newId) {
+                idMap[nd.id] = newId;
+                // Les sous-processus collés partagent le même workflow interne
+                if (nd.subflowJSON) this.nodes[newId].subflowJSON = nd.subflowJSON;
+                this.selectedNodes.add(newId);
+                const el = this.nodesContainer.querySelector(`#node-${newId}`);
+                if (el) el.classList.add('selected');
+            }
+        });
+
+        WorkflowEditor._clipboard.links.forEach(l => {
+            const from = idMap[l.fromNode], to = idMap[l.toNode];
+            if (from && to) this.createLink(from, l.fromPort, to, l.toPort);
+        });
+
+        this._historyPaused = false;
+        this._saveSnapshot();
+        this._updateSelectionState();
+        if (this._onChange) this._onChange();
+    },
+
     // ── Canvas ────────────────────────────────────────────────────────────────
 
     toggleGrid(btnId) {
