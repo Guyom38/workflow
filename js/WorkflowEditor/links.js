@@ -30,8 +30,9 @@ Object.assign(WorkflowEditor.prototype, {
             return { link, cp, samples: this._sampleCurve(cp, 60) };
         });
 
-        // 2. Detect crossings — higher-index link gets the bridge arc
-        const bridgeMap = new Map();
+        // 2. Detect ALL crossings between link pairs
+        const crossPairs = [];
+        const crossCount = new Map();
         for (let i = 0; i < geoms.length; i++) {
             const bbA = this._curveBBox(geoms[i].cp);
             for (let j = i + 1; j < geoms.length; j++) {
@@ -40,20 +41,44 @@ Object.assign(WorkflowEditor.prototype, {
                     bbA.maxY < bbB.minY || bbB.maxY < bbA.minY) continue;
                 const crosses = this._segmentCrossings(geoms[i].samples, geoms[j].samples);
                 for (const cr of crosses) {
-                    if (!bridgeMap.has(j)) bridgeMap.set(j, []);
-                    bridgeMap.get(j).push(cr.tB);
+                    crossPairs.push({ i, j, tI: cr.tA, tJ: cr.tB });
+                    crossCount.set(i, (crossCount.get(i) || 0) + 1);
+                    crossCount.set(j, (crossCount.get(j) || 0) + 1);
                 }
             }
         }
 
-        // 3. Draw each link
-        geoms.forEach(({ link, cp }, idx) => {
+        // 3. Assign bridges: a link that already has bridges stays priority
+        const hasBridge = new Set();
+        const bridgeMap = new Map();
+        crossPairs.sort((a, b) => {
+            const ma = Math.max(crossCount.get(a.i)||0, crossCount.get(a.j)||0);
+            const mb = Math.max(crossCount.get(b.i)||0, crossCount.get(b.j)||0);
+            return mb - ma;
+        });
+        for (const { i, j, tI, tJ } of crossPairs) {
+            const iHas = hasBridge.has(i), jHas = hasBridge.has(j);
+            let bl, bt;
+            if (iHas && !jHas)      { bl = i; bt = tI; }
+            else if (jHas && !iHas) { bl = j; bt = tJ; }
+            else { bl = (crossCount.get(i)||0) >= (crossCount.get(j)||0) ? i : j; bt = bl === i ? tI : tJ; }
+            hasBridge.add(bl);
+            if (!bridgeMap.has(bl)) bridgeMap.set(bl, []);
+            bridgeMap.get(bl).push(bt);
+        }
+
+        // 4. Draw each link
+        geoms.forEach(({ link, cp, samples }, idx) => {
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('class', 'link-path pointer-events-auto');
 
             const bridges = bridgeMap.get(idx);
             if (bridges && bridges.length) {
-                path.setAttribute('d', this._pathWithBridges(cp, bridges));
+                let len = 0;
+                for (let k = 1; k < samples.length; k++)
+                    len += Math.hypot(samples[k].x - samples[k-1].x, samples[k].y - samples[k-1].y);
+                path.setAttribute('d', this._pathWithBridges(cp, bridges, len));
+                path.classList.add('link-bridge');
             } else {
                 path.setAttribute('d', this._cpToPath(cp));
             }
@@ -229,12 +254,15 @@ Object.assign(WorkflowEditor.prototype, {
         return segs;
     },
 
-    _pathWithBridges(cp, bridgeTs) {
-        const DT = 0.04;
+    _pathWithBridges(cp, bridgeTs, curveLen) {
+        // Bridge span adapts: wider when more links cross this one
+        const n = bridgeTs.length;
+        const BRIDGE_PX = n >= 3 ? 22 : n >= 2 ? 18 : 14;
+        const DT = Math.max(0.008, Math.min(0.035, BRIDGE_PX / (curveLen || 300)));
         bridgeTs.sort((a,b)=>a-b);
         const filtered = [];
         for (const t of bridgeTs) {
-            if (t < DT * 2.5 || t > 1 - DT * 2.5) continue;
+            if (t < DT * 3 || t > 1 - DT * 3) continue;
             if (filtered.length && t - filtered[filtered.length-1] < DT * 4) continue;
             filtered.push(t);
         }
@@ -251,9 +279,9 @@ Object.assign(WorkflowEditor.prototype, {
         for (let i = 0; i < segs.length; i++) {
             const s = segs[i];
             if (i % 2 === 1) {
-                // Bridge arc — semicircle bump over the crossing
+                // Tiny bridge arc — semicircle bump
                 const chord = Math.hypot(s[3].x - s[0].x, s[3].y - s[0].y);
-                const r = Math.max(chord / 2, 7);
+                const r = Math.max(chord / 2, 5);
                 d += ` A ${r} ${r} 0 0 1 ${s[3].x} ${s[3].y}`;
             } else {
                 d += ` C ${s[1].x} ${s[1].y}, ${s[2].x} ${s[2].y}, ${s[3].x} ${s[3].y}`;

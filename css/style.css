@@ -128,6 +128,13 @@ body {
     cursor: pointer;
     filter: drop-shadow(0 0 6px rgba(59,130,246,0.6));
 }
+.link-path.link-bridge {
+    stroke: #a78bfa;
+    filter: drop-shadow(0 0 5px rgba(167,139,250,0.5));
+}
+.link-path.link-bridge:hover {
+    stroke: var(--link-active);
+}
 .link-path.dragging {
     stroke: #3b82f6;
     stroke-dasharray: 10;
