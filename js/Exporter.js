@@ -2,56 +2,167 @@
  * NEXUS - Exporteur de workflows
  *
  * Génère, à partir d'un workflow JSON :
- *  - Un script Python orchestrateur (embed les scripts briques + appels séquentiels)
+ *  - Un script Python orchestrateur (embed les scripts briques + appels séquentiels/parallèles)
  *  - Un fichier setup.bat (création du .venv + installation des dépendances)
+ *
+ * Fonctionnalités :
+ *  - NexusMonitor : supervision en temps réel de l'exécution (ANSI terminal)
+ *  - Parallélisme  : détection automatique des niveaux, exécution via ThreadPoolExecutor
+ *  - Sous-processus : génération récursive des workflows imbriqués
+ *  - Validation    : contrôle de prérequis avant export
  */
 class Exporter {
 
+    // ── API publique ──────────────────────────────────────────────────────────
+
     /**
-     * Génère le script Python d'orchestration.
+     * Valide un workflow avant export.
+     * @param {object} workflowData - Résultat de WorkflowEditor.toJSON()
+     * @returns {{ valid: boolean, hasWarnings: boolean, errors: Array<{nodeId, level, message}> }}
+     */
+    static validate(workflowData) {
+        const { nodes = {}, links = [] } = workflowData;
+        const errors = [];
+
+        const fromNodes = new Set(links.map(l => l.fromNode));
+        const toNodes   = new Set(links.map(l => l.toNode));
+
+        // 1. Au moins un nœud DÉPART
+        const startNodes = Object.values(nodes).filter(n => n.type === 'start');
+        if (startNodes.length === 0) {
+            errors.push({ nodeId: null, level: 'error', message: 'Aucun nœud DÉPART dans le workflow.' });
+        } else {
+            startNodes.forEach(n => {
+                if (!fromNodes.has(n.id)) {
+                    errors.push({ nodeId: n.id, level: 'error',
+                        message: `Nœud DÉPART "${n.label || 'DÉPART'}" sans connexion sortante.` });
+                }
+            });
+        }
+
+        // 2. Briques sans script / processus sans fichier
+        Object.values(nodes).forEach(n => {
+            if (n.type === 'python' && !n.scriptContent) {
+                errors.push({ nodeId: n.id, level: 'warning',
+                    message: `Script Python non chargé : "${n.label || n.id}".` });
+            }
+            if (n.type === 'process' && !n.scriptName) {
+                errors.push({ nodeId: n.id, level: 'warning',
+                    message: `Processus sans fichier : "${n.label || n.id}".` });
+            }
+        });
+
+        // 3. Nœuds complètement isolés (sauf note)
+        const ALWAYS_ALONE = new Set(['note']);
+        Object.values(nodes).forEach(n => {
+            if (ALWAYS_ALONE.has(n.type)) return;
+            if (!fromNodes.has(n.id) && !toNodes.has(n.id)) {
+                errors.push({ nodeId: n.id, level: 'warning',
+                    message: `Brique isolée (aucune connexion) : "${n.label || n.type}".` });
+            }
+        });
+
+        return {
+            valid:       errors.filter(e => e.level === 'error').length === 0,
+            hasWarnings: errors.some(e => e.level === 'warning'),
+            errors,
+        };
+    }
+
+    /**
+     * Génère le script Python d'orchestration avec moniteur d'exécution et parallélisme.
      * @param {object} workflowData - Résultat de WorkflowEditor.toJSON()
      * @returns {string} Contenu du fichier .py
      */
     static toPython(workflowData) {
         const { name = 'workflow', nodes = {}, links = [] } = workflowData;
         const ordered = Exporter._topologicalOrder(nodes, links);
+        const levels  = Exporter._computeLevels(nodes, links);
 
-        // Collecte des scripts Python, des processus et des dépendances
+        const EXEC_TYPES = new Set(['python', 'process', 'variable', 'subflow', 'api', 'operator', 'timing', 'condition', 'loop']);
+        const execNodes  = ordered.filter(id => nodes[id] && EXEC_TYPES.has(nodes[id].type));
+
+        // ── Collecte des scripts, processus, dépendances ──────────────────────
         const embeddedScripts  = [];
-        const embeddedProcs    = [];   // { varName, ext, b64, node, meta, nodeId }
+        const embeddedProcs    = [];
+        const subflowFunctions = [];
         const allDependencies  = new Set();
-        const pythonCallOrder  = [];
-        const processCallOrder = [];
         let   hasProcessNodes  = false;
+        let   hasParallel      = false;
+
+        const nodeInfo = {}; // id → { kind, safe, fname/varName/..., meta, node }
 
         ordered.forEach(nodeId => {
             const node = nodes[nodeId];
             if (!node) return;
+            // safe = identifiant unique basé sur le nodeId (évite les collisions si deux briques ont le même nom)
+            const safe     = Exporter._safeFunctionName(nodeId);
+            // sfSafe = nom lisible pour les sous-processus (basé sur le label)
+            const sfSafe   = Exporter._safeFunctionName(
+                node.scriptMeta?.name || node.label || node.scriptName || node.varName || nodeId
+            );
 
-            if (node.type === 'python' && node.scriptContent) {
-                const meta  = node.scriptMeta || {};
-                const fname = Exporter._safeFunctionName(meta.name || node.scriptName || nodeId);
-                embeddedScripts.push(
-                    `# ${'─'.repeat(60)}\n` +
-                    `# Brique : ${meta.name || node.scriptName || nodeId}\n` +
-                    `# Fichier : ${node.scriptName || 'inconnu'}\n` +
-                    `# ${'─'.repeat(60)}\n` +
-                    node.scriptContent.trim() + '\n'
-                );
-                (meta.dependencies || []).forEach(d => allDependencies.add(d));
-                pythonCallOrder.push({ nodeId, fname, meta, node });
+            if (node.type === 'python') {
+                if (node.scriptContent) {
+                    const meta  = node.scriptMeta || {};
+                    const fname = Exporter._safeFunctionName(meta.name || node.scriptName || nodeId);
+                    embeddedScripts.push(
+                        `# ${'─'.repeat(60)}\n` +
+                        `# Brique : ${meta.name || node.scriptName || nodeId}\n` +
+                        `# Fichier : ${node.scriptName || 'inconnu'}\n` +
+                        `# ${'─'.repeat(60)}\n` +
+                        node.scriptContent.trim() + '\n'
+                    );
+                    (meta.dependencies || []).forEach(d => allDependencies.add(d));
+                    nodeInfo[nodeId] = { kind: 'python', fname, meta, node, safe };
+                } else {
+                    nodeInfo[nodeId] = { kind: 'python_empty', safe, node };
+                }
             }
 
-            if (node.type === 'process' && node.scriptName) {
-                hasProcessNodes = true;
-                const meta    = node.scriptMeta || {};
-                const varName = 'PROC_' + Exporter._safeFunctionName(meta.name || node.scriptName || nodeId).toUpperCase();
-                const ext     = node.scriptName.split('.').pop().toLowerCase();
-                const b64     = node.scriptContent ? Exporter._toBase64(node.scriptContent) : '';
-                embeddedProcs.push({ varName, ext, b64, node, meta, nodeId });
-                processCallOrder.push({ varName, ext, meta, node, nodeId });
+            else if (node.type === 'process') {
+                if (node.scriptName) {
+                    hasProcessNodes = true;
+                    const meta    = node.scriptMeta || {};
+                    const varName = 'PROC_' + Exporter._safeFunctionName(
+                        meta.name || node.scriptName || nodeId
+                    ).toUpperCase();
+                    const ext  = node.scriptName.split('.').pop().toLowerCase();
+                    const b64  = node.scriptContent ? Exporter._toBase64(node.scriptContent) : '';
+                    embeddedProcs.push({ varName, ext, b64, node, meta, nodeId });
+                    nodeInfo[nodeId] = { kind: 'process', varName, ext, meta, node, safe };
+                } else {
+                    nodeInfo[nodeId] = { kind: 'process_empty', safe, node };
+                }
+            }
+
+            else if (node.type === 'variable') {
+                nodeInfo[nodeId] = { kind: 'variable', node, safe };
+            }
+
+            else if (node.type === 'subflow') {
+                nodeInfo[nodeId] = { kind: 'subflow', node, safe, sfSafe };
+                if (node.subflowJSON) {
+                    const { code, deps, needsProc } = Exporter._buildSubflowCode(node, sfSafe);
+                    subflowFunctions.push(code);
+                    deps.forEach(d => allDependencies.add(d));
+                    if (needsProc) hasProcessNodes = true;
+                }
+            }
+
+            else if (['api', 'operator', 'timing', 'condition', 'loop'].includes(node.type)) {
+                nodeInfo[nodeId] = { kind: node.type, node, safe };
             }
         });
+
+        // ── Niveaux et parallélisme ───────────────────────────────────────────
+        const levelGroups = {};
+        execNodes.forEach(id => {
+            const lv = levels[id] ?? 0;
+            (levelGroups[lv] = levelGroups[lv] || []).push(id);
+        });
+        const sortedLevels = Object.keys(levelGroups).map(Number).sort((a, b) => a - b);
+        sortedLevels.forEach(lv => { if (levelGroups[lv].length > 1) hasParallel = true; });
 
         // ── Header ────────────────────────────────────────────────────────────
         const header = [
@@ -68,73 +179,115 @@ class Exporter {
             `import json`,
             `import sys`,
             `import os`,
+            `import time`,
+            `import threading`,
             hasProcessNodes ? `import subprocess` : '',
             hasProcessNodes ? `import tempfile` : '',
             hasProcessNodes ? `import base64` : '',
+            hasParallel     ? `from concurrent.futures import ThreadPoolExecutor, as_completed` : '',
             ``,
         ].filter(l => l !== '').join('\n');
 
-        // ── Scripts Python embarqués ──────────────────────────────────────────
+        // ── Classes et helpers ────────────────────────────────────────────────
+        const monitorClass = Exporter._buildMonitorClass();
+
         const scripts = embeddedScripts.length
-            ? `\n# ${'═'.repeat(60)}\n# SCRIPTS BRIQUES PYTHON EMBARQUÉS\n# ${'═'.repeat(60)}\n\n` + embeddedScripts.join('\n\n')
+            ? `\n# ${'═'.repeat(60)}\n# SCRIPTS BRIQUES PYTHON EMBARQUÉS\n# ${'═'.repeat(60)}\n\n`
+              + embeddedScripts.join('\n\n')
             : '';
 
-        // ── Scripts Processus embarqués (base64) ──────────────────────────────
         const procScripts = embeddedProcs.length
-            ? `\n# ${'═'.repeat(60)}\n# SCRIPTS PROCESSUS EMBARQUÉS (base64)\n# ${'═'.repeat(60)}\n\n` +
-              embeddedProcs.map(({ varName, b64, node }) =>
-                  `# Fichier : ${node.scriptName || 'inconnu'}\n` +
-                  `${varName} = b"${b64}"\n`
+            ? `\n# ${'═'.repeat(60)}\n# SCRIPTS PROCESSUS EMBARQUÉS (base64)\n# ${'═'.repeat(60)}\n\n`
+              + embeddedProcs.map(({ varName, b64, node }) =>
+                  `# Fichier : ${node.scriptName || 'inconnu'}\n${varName} = b"${b64}"\n`
               ).join('\n')
             : '';
 
-        // ── Helper _nexus_call_process ────────────────────────────────────────
         const procHelper = hasProcessNodes ? Exporter._buildProcessHelper() : '';
 
-        // ── Lignes d'appel des nœuds Python ───────────────────────────────────
-        const pythonLines = pythonCallOrder.map(({ nodeId, fname, meta }) => {
-            const inParams = JSON.stringify(
-                Object.fromEntries(Object.keys(meta.input || {}).map(k => [k, `<${k}>`])),
-                null, 4
-            ).replace(/"<(.+?)>"/g, '"<$1>"');
-            return (
-                `    # Nœud : ${meta.name || fname} [${nodeId}]\n` +
-                `    result_${Exporter._safeFunctionName(nodeId)} = ${fname}(${inParams})\n`
-            );
+        const sfCode = subflowFunctions.length
+            ? `\n# ${'═'.repeat(60)}\n# SOUS-PROCESSUS EMBARQUÉS\n# ${'═'.repeat(60)}\n`
+              + subflowFunctions.join('\n')
+            : '';
+
+        // ── Wrappers par nœud ─────────────────────────────────────────────────
+        const wrappers = execNodes.map(id => {
+            const info = nodeInfo[id];
+            return info ? Exporter._buildNodeWrapper(id, info) : '';
+        }).filter(Boolean).join('\n\n');
+
+        const wrappersSection = wrappers
+            ? `\n# ${'═'.repeat(60)}\n# FONCTIONS WRAPPER PAR NŒUD\n# ${'═'.repeat(60)}\n\n` + wrappers
+            : '';
+
+        // ── Nœuds dans le moniteur ────────────────────────────────────────────
+        const nodeLabel = id => {
+            const n = nodes[id];
+            return n?.scriptMeta?.name || n?.label || n?.varName || n?.scriptName || n?.type || id;
+        };
+        const monitorList = execNodes.map(id => {
+            const n = nodes[id];
+            return `        ("${id}", ${JSON.stringify(nodeLabel(id))}, "${n?.type || 'unknown'}"),`;
         }).join('\n');
 
-        // ── Lignes d'appel des nœuds Processus ────────────────────────────────
-        const processLines = processCallOrder.map(({ varName, ext, meta, node, nodeId }) => {
-            const inputEntries = Object.entries(meta.input || {});
-            const paramLines = inputEntries.map(([k, def]) => {
-                const fallback = JSON.stringify(def.default ?? (def.type === 'bool' ? false : def.type === 'int' ? 0 : ''));
-                return `        "${k}": data.get("${k}", ${fallback}),`;
-            }).join('\n');
-            const safe = Exporter._safeFunctionName(meta.name || node.scriptName || nodeId);
-            return (
-                `    # Nœud : ${meta.name || node.scriptName || nodeId} [${nodeId}]\n` +
-                `    _params_${safe} = {\n${paramLines}\n    }\n` +
-                `    result_${safe} = _nexus_call_process(${varName}, "${ext}", _params_${safe})\n` +
-                `    data.update(result_${safe})\n`
-            );
-        }).join('\n');
+        // ── Code d'orchestration par niveau ───────────────────────────────────
+        const levelCode = sortedLevels.map(lv => {
+            const group = levelGroups[lv];
+            if (!group?.length) return '';
 
-        const allCallLines = [pythonLines, processLines].filter(Boolean).join('\n') ||
-                             `    pass  # Aucun nœud exécutable dans ce workflow`;
+            if (group.length === 1) {
+                const id   = group[0];
+                const info = nodeInfo[id];
+                if (!info) return '';
+                return (
+                    `    # ── Niveau ${lv}  ·  ${nodeLabel(id)}\n` +
+                    `    _r = _run_${info.safe}(data, _monitor)\n` +
+                    `    data.update(_r)\n`
+                );
+            }
 
-        // ── Orchestrateur ─────────────────────────────────────────────────────
+            // Exécution parallèle
+            const submits = group.map(id => {
+                const info = nodeInfo[id];
+                return info ? `        _futures[_exe.submit(_run_${info.safe}, dict(data), _monitor)] = "${id}"` : '';
+            }).filter(Boolean).join('\n');
+
+            const names = group.map(nodeLabel).join(', ');
+            return [
+                `    # ── Niveau ${lv}  ·  ${group.length} briques en parallèle : ${names}`,
+                `    _futures = {}`,
+                `    with ThreadPoolExecutor(max_workers=${group.length}) as _exe:`,
+                submits,
+                `        for _f in as_completed(_futures):`,
+                `            _nid = _futures[_f]`,
+                `            try:`,
+                `                _r = _f.result()`,
+                `                with _data_lock:`,
+                `                    data.update(_r)`,
+                `            except Exception:`,
+                `                pass  # erreur déjà enregistrée par le moniteur`,
+            ].join('\n') + '\n';
+        }).filter(Boolean).join('\n');
+
+        // ── Orchestrateur principal ───────────────────────────────────────────
         const orchestrator = [
             ``,
             `# ${'═'.repeat(60)}`,
             `# ORCHESTRATEUR`,
             `# ${'═'.repeat(60)}`,
             ``,
+            `_data_lock = threading.Lock()`,
+            ``,
             `def run_workflow(input_data: dict = None) -> dict:`,
             `    """Exécute le workflow "${name}" dans l'ordre topologique."""`,
             `    data = input_data or {}`,
+            `    _monitor = NexusMonitor([`,
+            monitorList,
+            `    ])`,
             ``,
-            allCallLines,
+            levelCode || `    pass  # Aucun nœud exécutable dans ce workflow`,
             ``,
+            `    _monitor.print_summary()`,
             `    return data`,
             ``,
             ``,
@@ -152,7 +305,7 @@ class Exporter {
             `    print(json.dumps(result, ensure_ascii=False, indent=2))`,
         ].join('\n');
 
-        return header + scripts + procScripts + procHelper + orchestrator + '\n';
+        return header + monitorClass + scripts + procScripts + procHelper + sfCode + wrappersSection + orchestrator + '\n';
     }
 
     /**
@@ -227,7 +380,7 @@ class Exporter {
     static collectDependencies(nodes) {
         const deps = new Set();
         Object.values(nodes).forEach(node => {
-            if (node.scriptMeta && node.scriptMeta.dependencies) {
+            if (node.scriptMeta?.dependencies) {
                 node.scriptMeta.dependencies.forEach(d => deps.add(d));
             }
         });
@@ -235,6 +388,347 @@ class Exporter {
     }
 
     // ── Helpers privés ────────────────────────────────────────────────────────
+
+    /**
+     * Calcule le niveau d'exécution de chaque nœud (longueur du chemin le plus long
+     * depuis les sources). Les nœuds de même niveau peuvent s'exécuter en parallèle.
+     */
+    static _computeLevels(nodes, links) {
+        const preds = {};
+        Object.keys(nodes).forEach(id => { preds[id] = []; });
+        links.forEach(l => {
+            if (preds[l.toNode] !== undefined && l.fromNode !== l.toNode) {
+                preds[l.toNode].push(l.fromNode);
+            }
+        });
+
+        const levels = {};
+        const getLevel = (id, stack) => {
+            if (levels[id] !== undefined) return levels[id];
+            if (!stack) stack = new Set();
+            if (stack.has(id)) return 0; // protection cycle
+            const nextStack = new Set(stack); nextStack.add(id);
+            const ps = preds[id] || [];
+            levels[id] = ps.length === 0 ? 0 : Math.max(...ps.map(p => getLevel(p, nextStack))) + 1;
+            return levels[id];
+        };
+        Object.keys(nodes).forEach(id => getLevel(id));
+        return levels;
+    }
+
+    /**
+     * Génère la classe Python NexusMonitor (superviseur d'exécution en temps réel).
+     */
+    static _buildMonitorClass() {
+        return `
+
+# ${'═'.repeat(60)}
+# NEXUS MONITOR — Superviseur d'exécution en temps réel
+# ${'═'.repeat(60)}
+
+class NexusMonitor:
+    """Superviseur d'exécution NEXUS : affichage ANSI en temps réel."""
+
+    _C = {
+        'PENDING': '\\x1b[90m',
+        'RUNNING': '\\x1b[93m',
+        'OK':      '\\x1b[92m',
+        'ERROR':   '\\x1b[91m',
+        'SKIPPED': '\\x1b[94m',
+        'R':       '\\x1b[0m',
+        'B':       '\\x1b[1m',
+    }
+    _I = {'PENDING': '○', 'RUNNING': '◆', 'OK': '✓', 'ERROR': '✗', 'SKIPPED': '─'}
+
+    def __init__(self, node_list):
+        # node_list : [(id, name, type), ...]
+        self._nodes    = node_list
+        self._state    = {n[0]: 'PENDING' for n in node_list}
+        self._elapsed  = {}
+        self._errors   = {}
+        self._t0       = {}
+        self._t_global = time.time()
+        self._lock     = threading.Lock()
+        self._tty      = sys.stdout.isatty()
+        self._height   = len(node_list) + 4
+        self._rendered = False
+        self._draw()
+
+    def start_node(self, node_id: str):
+        with self._lock:
+            self._state[node_id] = 'RUNNING'
+            self._t0[node_id]    = time.time()
+            self._draw()
+
+    def finish_node(self, node_id: str):
+        with self._lock:
+            self._state[node_id]   = 'OK'
+            self._elapsed[node_id] = time.time() - self._t0.get(node_id, time.time())
+            self._draw()
+
+    def error_node(self, node_id: str, exc: Exception):
+        with self._lock:
+            self._state[node_id]   = 'ERROR'
+            self._elapsed[node_id] = time.time() - self._t0.get(node_id, time.time())
+            self._errors[node_id]  = str(exc)
+            self._draw()
+
+    def skip_node(self, node_id: str):
+        with self._lock:
+            self._state[node_id] = 'SKIPPED'
+            self._draw()
+
+    def print_summary(self):
+        with self._lock:
+            C   = self._C
+            ok  = sum(1 for s in self._state.values() if s == 'OK')
+            err = sum(1 for s in self._state.values() if s == 'ERROR')
+            tot = len(self._nodes)
+            elapsed = time.time() - self._t_global
+            print()
+            print(C['B'] + '═' * 70 + C['R'])
+            err_tag = (f"  {C['ERROR']}{err} erreur(s){C['R']}{C['B']}" if err else '')
+            print(C['B'] + f"  Résumé : {ok}/{tot} briques OK{err_tag}  —  {elapsed:.2f}s" + C['R'])
+            if err:
+                for nid, name, _ in self._nodes:
+                    if self._state.get(nid) == 'ERROR':
+                        print(f"  {C['ERROR']}✗ {name}{C['R']} : {self._errors.get(nid, '?')}")
+            print(C['B'] + '═' * 70 + C['R'])
+            sys.stdout.flush()
+
+    def _draw(self):
+        C = self._C
+        if self._tty and self._rendered:
+            sys.stdout.write(f"\\033[{self._height}A\\033[J")
+        done    = sum(1 for s in self._state.values() if s in ('OK', 'ERROR', 'SKIPPED'))
+        total   = len(self._nodes)
+        elapsed = time.time() - self._t_global
+        pct     = int(100 * done / total) if total else 100
+        bw      = 26
+        filled  = int(bw * done / total) if total else bw
+        bar     = '\\u2588' * filled + '\\u2591' * (bw - filled)
+        W = 70
+        print(C['B'] + '─' * W + C['R'])
+        print(C['B'] + f"  NEXUS  [{bar}] {pct:3d}%  {elapsed:6.1f}s" + C['R'])
+        print('─' * W)
+        for nid, name, ntype in self._nodes:
+            st    = self._state.get(nid, 'PENDING')
+            color = C.get(st, '')
+            icon  = self._I.get(st, '?')
+            badge = f"[{ntype[:7].upper():7s}]"
+            tstr  = f"{self._elapsed[nid]:5.1f}s" if nid in self._elapsed else '     —'
+            err   = f"  ← {self._errors[nid][:25]}" if st == 'ERROR' and nid in self._errors else ''
+            print(f"  {color}{icon}{C['R']}  {badge}  {name[:36]:<36s}  {color}{st:<7s}{C['R']}  {tstr}{err}")
+        print('─' * W)
+        sys.stdout.flush()
+        self._rendered = True
+
+`;
+    }
+
+    /**
+     * Génère la fonction wrapper Python pour un nœud.
+     * Signature : _run_<safe>(data: dict, monitor) -> dict
+     */
+    static _buildNodeWrapper(nodeId, info) {
+        const { kind, safe, node } = info;
+
+        let innerBody;
+
+        switch (kind) {
+            case 'python': {
+                const { fname, meta } = info;
+                const paramLines = Object.keys(meta.input || {}).map(k =>
+                    `            ${JSON.stringify(k)}: data.get(${JSON.stringify(k)}),`
+                ).join('\n');
+                const callArg = paramLines
+                    ? `{\n${paramLines}\n        }`
+                    : 'dict(data)';
+                innerBody = [
+                    `        _result = ${fname}(${callArg})`,
+                    `        if not isinstance(_result, dict):`,
+                    `            _result = {"result": _result}`,
+                ].join('\n');
+                break;
+            }
+
+            case 'python_empty':
+                innerBody = `        # Script Python non chargé — nœud ignoré\n        _result = {}`;
+                break;
+
+            case 'process': {
+                const { varName, ext, meta } = info;
+                const paramLines = Object.entries(meta.input || {}).map(([k, def]) => {
+                    const fallback = JSON.stringify(
+                        def.default ?? (def.type === 'bool' ? false : def.type === 'int' ? 0 : '')
+                    );
+                    return `            ${JSON.stringify(k)}: data.get(${JSON.stringify(k)}, ${fallback}),`;
+                }).join('\n');
+                innerBody = [
+                    `        _params = {`,
+                    paramLines,
+                    `        }`,
+                    `        _result = _nexus_call_process(${varName}, "${ext}", _params)`,
+                ].join('\n');
+                break;
+            }
+
+            case 'process_empty':
+                innerBody = `        # Processus sans fichier — nœud ignoré\n        _result = {}`;
+                break;
+
+            case 'variable': {
+                const vname = node.varName || 'variable';
+                const vval  = JSON.stringify(node.varValue ?? null);
+                innerBody = `        _result = {${JSON.stringify(vname)}: ${vval}}`;
+                break;
+            }
+
+            case 'subflow':
+                if (node.subflowJSON) {
+                    innerBody = `        _result = run_subflow_${info.sfSafe || safe}(dict(data))`;
+                } else {
+                    innerBody = `        # Sous-processus non configuré — ignoré\n        _result = {}`;
+                }
+                break;
+
+            case 'api':
+                innerBody = [
+                    `        # TODO: Configurer l'URL et la méthode HTTP pour ce nœud API`,
+                    `        # import requests`,
+                    `        # _resp = requests.get("https://...", params=data)`,
+                    `        # _result = _resp.json()`,
+                    `        _result = {}`,
+                ].join('\n');
+                break;
+
+            case 'operator':
+                innerBody = `        # TODO: Nœud OPÉRATEUR — implémenter la logique ici\n        _result = {}`;
+                break;
+
+            case 'timing': {
+                const delay = node.delay ?? 1;
+                innerBody = `        time.sleep(${delay})\n        _result = {}`;
+                break;
+            }
+
+            case 'condition':
+                innerBody = [
+                    `        # TODO: Nœud CONDITION — implémenter la condition`,
+                    `        _result = {"condition_result": bool(data.get("condition", False))}`,
+                ].join('\n');
+                break;
+
+            case 'loop':
+                innerBody = `        # TODO: Nœud BOUCLE — implémenter la boucle\n        _result = {}`;
+                break;
+
+            default:
+                innerBody = `        _result = {}`;
+        }
+
+        return [
+            `def _run_${safe}(data: dict, monitor) -> dict:`,
+            `    monitor.start_node("${nodeId}")`,
+            `    try:`,
+            innerBody,
+            `        monitor.finish_node("${nodeId}")`,
+            `        return _result`,
+            `    except Exception as _e:`,
+            `        monitor.error_node("${nodeId}", _e)`,
+            `        raise`,
+        ].join('\n');
+    }
+
+    /**
+     * Génère le code Python pour un sous-processus embarqué.
+     * @returns {{ code: string, deps: string[], needsProc: boolean }}
+     */
+    static _buildSubflowCode(sfNode, safeName) {
+        const sf      = sfNode.subflowJSON;
+        const sfNodes = sf.nodes || {};
+        const sfLinks = sf.links || [];
+        const deps    = [];
+        let   needsProc = false;
+
+        const sfOrdered = Exporter._topologicalOrder(sfNodes, sfLinks);
+        const sfLevels  = Exporter._computeLevels(sfNodes, sfLinks);
+        const EXEC_TYPES = new Set(['python', 'process', 'variable']);
+        const sfExec = sfOrdered.filter(id => sfNodes[id] && EXEC_TYPES.has(sfNodes[id].type));
+
+        const lines = [`\ndef run_subflow_${safeName}(data: dict) -> dict:`];
+        lines.push(`    """Exécute le sous-processus "${sfNode.label || safeName}"."""`);
+
+        if (sfExec.length === 0) {
+            lines.push(`    return data`);
+            return { code: lines.join('\n'), deps, needsProc };
+        }
+
+        // Embeds + appels en ordre topologique (séquentiel dans le sous-processus)
+        const sfEmbeds  = [];
+        const sfProcVars = [];
+
+        sfExec.forEach(nodeId => {
+            const n = sfNodes[nodeId];
+            const sfSafe = 'sf_' + safeName + '_' + Exporter._safeFunctionName(
+                n.scriptMeta?.name || n.scriptName || n.varName || nodeId
+            );
+
+            if (n.type === 'python' && n.scriptContent) {
+                const meta  = n.scriptMeta || {};
+                const fname = Exporter._safeFunctionName(meta.name || n.scriptName || nodeId);
+                sfEmbeds.push(
+                    `# ${'─'.repeat(60)}\n` +
+                    `# Sous-brique : ${meta.name || n.scriptName || nodeId}\n` +
+                    `# Sous-processus : ${sfNode.label || safeName}\n` +
+                    `# ${'─'.repeat(60)}\n` +
+                    n.scriptContent.trim() + '\n'
+                );
+                (meta.dependencies || []).forEach(d => deps.push(d));
+                const paramLines = Object.keys(meta.input || {}).map(k =>
+                    `            ${JSON.stringify(k)}: data.get(${JSON.stringify(k)}),`
+                ).join('\n');
+                const callArg = paramLines ? `{\n${paramLines}\n        }` : 'dict(data)';
+                lines.push(`    # ${meta.name || n.scriptName || nodeId}`);
+                lines.push(`    _r = ${fname}(${callArg})`);
+                lines.push(`    if isinstance(_r, dict): data.update(_r)`);
+            }
+            else if (n.type === 'process' && n.scriptName) {
+                needsProc = true;
+                const meta    = n.scriptMeta || {};
+                const varName = 'PROC_SF_' + Exporter._safeFunctionName(
+                    meta.name || n.scriptName || nodeId
+                ).toUpperCase();
+                const ext  = n.scriptName.split('.').pop().toLowerCase();
+                const b64  = n.scriptContent ? Exporter._toBase64(n.scriptContent) : '';
+                sfProcVars.push(`# Sous-processus "${sfNode.label}" — fichier ${n.scriptName}\n${varName} = b"${b64}"\n`);
+                const paramLines = Object.entries(meta.input || {}).map(([k, def]) => {
+                    const fb = JSON.stringify(def.default ?? (def.type === 'bool' ? false : def.type === 'int' ? 0 : ''));
+                    return `            ${JSON.stringify(k)}: data.get(${JSON.stringify(k)}, ${fb}),`;
+                }).join('\n');
+                lines.push(`    # ${meta.name || n.scriptName || nodeId}`);
+                lines.push(`    _r = _nexus_call_process(${varName}, "${ext}", {`);
+                if (paramLines) lines.push(paramLines);
+                lines.push(`    })`);
+                lines.push(`    if isinstance(_r, dict): data.update(_r)`);
+            }
+            else if (n.type === 'variable') {
+                const vname = n.varName || 'variable';
+                lines.push(`    data[${JSON.stringify(vname)}] = ${JSON.stringify(n.varValue ?? null)}`);
+            }
+        });
+
+        lines.push(`    return data`);
+
+        // Prepend embedded scripts for subflow (they must appear before the function definition)
+        const preamble = sfEmbeds.length
+            ? `\n# ${'─'.repeat(60)}\n# Scripts embarqués du sous-processus "${sfNode.label || safeName}"\n# ${'─'.repeat(60)}\n`
+              + sfEmbeds.join('\n\n') + '\n'
+              + sfProcVars.join('\n')
+            : sfProcVars.join('\n');
+
+        return { code: preamble + lines.join('\n'), deps, needsProc };
+    }
 
     /**
      * Tri topologique des nœuds (BFS) — même algo que autoLayout.
@@ -267,14 +761,12 @@ class Exporter {
             });
         }
 
-        // Nœuds non visités (cycles ou îlots)
         Object.keys(nodes).forEach(id => { if (!visited.has(id)) result.push(id); });
         return result;
     }
 
     /**
      * Génère le corps Python de la fonction _nexus_call_process.
-     * Incluse une seule fois dans le script exporté si des nœuds process existent.
      */
     static _buildProcessHelper() {
         return `
@@ -392,8 +884,8 @@ def _nexus_call_process(script_b64: bytes, script_ext: str, params: dict) -> dic
     }
 
     static _safeFunctionName(str) {
-        return str
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // accents
+        return (str || 'node')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .replace(/[^a-zA-Z0-9_]/g, '_')
             .replace(/^[0-9]/, '_$&')
             .toLowerCase()

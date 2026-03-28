@@ -266,6 +266,12 @@ Object.assign(WorkflowEditor.prototype, {
         nameInput?.addEventListener('blur', stopEdit);
         nameInput?.addEventListener('keydown', e => { if (e.key==='Enter') { e.preventDefault(); nameInput.blur(); } });
 
+        // Bouton œil variable (afficher/masquer les détails)
+        nodeEl.querySelector('.var-eye-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._toggleVarBody(id);
+        });
+
         // Bouton info (?)
         nodeEl.querySelector('.var-info-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -285,6 +291,7 @@ Object.assign(WorkflowEditor.prototype, {
                 area.innerHTML = this._buildVariableValueHTML(id, node.varType, node.varValue);
                 this._attachVariableValueEvents(nodeEl, id);
             }
+            this._updateVarCompact(id);
             this._notifyChange();
         });
 
@@ -301,6 +308,7 @@ Object.assign(WorkflowEditor.prototype, {
                 node.varValue = node.varType === 'boolean'
                     ? valInput.value === 'true'
                     : (node.varType === 'int' ? parseInt(valInput.value, 10) : node.varType === 'double' ? parseFloat(valInput.value) : valInput.value);
+                this._updateVarCompact(id);
                 this._notifyChange();
             });
         }

@@ -80,13 +80,33 @@ Object.assign(WorkflowEditor.prototype, {
 
     // ── Variable ──────────────────────────────────────────────────────────────
 
+    _buildVarCompact(type, value) {
+        switch (type) {
+            case 'boolean': return (value === true || value === 'true') ? '✓ Vrai' : '✗ Faux';
+            case 'int':     return String(value ?? 0);
+            case 'double':  return String(value ?? 0);
+            case 'list':    return Array.isArray(value) ? `[${value.length} élément(s)]` : '[0 élément]';
+            case 'file':    return (value && typeof value === 'object') ? (value.fichier || value.chemin_complet || '—') : (value || '—');
+            case 'folder':  return value ? (String(value).split(/[\\/]/).pop() || String(value)) : '—';
+            default:        { const s = String(value ?? ''); return s ? `"${s.substring(0, 22)}"` : '""'; }
+        }
+    },
+
     _buildVariableBody(id, varType, varValue, varDescription) {
-        const types = ['string','int','double','boolean','list','file','folder'];
+        const types  = ['string','int','double','boolean','list','file','folder'];
         const labels = { string:'Chaîne (string)', int:'Entier (int)', double:'Décimal (double)', boolean:'Booléen', list:'Liste', file:'Fichier', folder:'Dossier' };
-        const opts = types.map(t => `<option value="${t}"${t===varType?' selected':''}>${labels[t]}</option>`).join('');
+        const opts   = types.map(t => `<option value="${t}"${t===varType?' selected':''}>${labels[t]}</option>`).join('');
+        const compact = this._buildVarCompact(varType, varValue);
+        // Le port out_value est embarqué directement dans la ligne de valeur compacte (toujours visible)
         return `
-        <select class="node-input var-type-select text-xs mb-1.5 mousedown-stop">${opts}</select>
-        <div class="var-value-area">${this._buildVariableValueHTML(id, varType, varValue)}</div>`;
+        <div class="var-detail-area hidden">
+            <select class="node-input var-type-select text-xs mb-1.5 mousedown-stop">${opts}</select>
+            <div class="var-value-area">${this._buildVariableValueHTML(id, varType, varValue)}</div>
+        </div>
+        <div class="flex items-center relative" style="min-height:18px;">
+            <span class="var-compact text-[0.7rem] font-mono text-pink-200/85 truncate flex-1 leading-tight">${compact}</span>
+            <div class="port port-out absolute" style="right:-17px;top:3px;" data-node="${id}" data-port="out_value" data-type="out"></div>
+        </div>`;
     },
 
     _buildVariableValueHTML(id, type, value) {
@@ -167,6 +187,8 @@ Object.assign(WorkflowEditor.prototype, {
         // Boutons droite du header
         const eyeBtn = (type === 'python' || type === 'process')
             ? `<button class="eye-ports-btn p-1 hover:bg-white/20 rounded transition-colors text-white/40 hover:text-white/80" data-node="${id}" title="Afficher/masquer les ports non connectés">${this._eyeOffSVG()}</button>` : '';
+        const varEyeBtn = type === 'variable'
+            ? `<button class="var-eye-btn p-1 hover:bg-white/20 rounded transition-colors mousedown-stop" data-node="${id}" title="Afficher/masquer les détails" style="color:rgba(255,255,255,0.85)">${this._eyeSVG()}</button>` : '';
         const infoBtn = type === 'variable'
             ? `<button class="var-info-btn p-1 hover:bg-white/20 rounded text-white/50 hover:text-white mousedown-stop" title="Description de la variable">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -207,9 +229,9 @@ Object.assign(WorkflowEditor.prototype, {
             </div>`;
         }
 
-        // Résolution des ports : python/process les gèrent eux-mêmes ; subflow/start/end ont des ports dynamiques
+        // Résolution des ports : python/process/variable les gèrent eux-mêmes ; subflow/start/end ont des ports dynamiques
         let portIns, portOuts;
-        if (type === 'python' || type === 'process') {
+        if (type === 'python' || type === 'process' || type === 'variable') {
             portIns = portOuts = null;
         } else if (type === 'subflow' && extraData?.subflowPorts) {
             portIns  = extraData.subflowPorts.inputs;
@@ -237,17 +259,18 @@ Object.assign(WorkflowEditor.prototype, {
                 <div class="port port-out absolute -right-5" data-node="${id}" data-port="${out.id}" data-type="out"></div>
             </div>`).join('');
 
+        const portsRow = (inputsHTML || outputsHTML)
+            ? `<div class="flex justify-between mt-1"><div class="flex flex-col gap-3">${inputsHTML}</div><div class="flex flex-col gap-3 items-end">${outputsHTML}</div></div>`
+            : '';
+
         return `
         <div class="h-8 rounded-t-lg ${spec.headerClass} flex justify-between items-center px-3 cursor-move node-header overflow-hidden">
             ${headerLeft}
-            <div class="flex items-center gap-0.5 shrink-0">${eyeBtn}${infoBtn}${settingsGear}</div>
+            <div class="flex items-center gap-0.5 shrink-0">${eyeBtn}${varEyeBtn}${infoBtn}${settingsGear}</div>
         </div>
         <div class="p-3 flex flex-col gap-2 relative node-body">
             ${bodyHTML}
-            <div class="flex justify-between mt-1">
-                <div class="flex flex-col gap-3">${inputsHTML}</div>
-                <div class="flex flex-col gap-3 items-end">${outputsHTML}</div>
-            </div>
+            ${portsRow}
         </div>`;
     },
 
@@ -419,6 +442,32 @@ Object.assign(WorkflowEditor.prototype, {
             </div>
         </div>
         ${paramsSection}`;
+    },
+
+    // ── Variable eye toggle ───────────────────────────────────────────────────
+
+    _toggleVarBody(nodeId) {
+        const el     = this.nodesContainer.querySelector(`#node-${nodeId}`);
+        if (!el) return;
+        const detail = el.querySelector('.var-detail-area');
+        const eyeBtn = el.querySelector('.var-eye-btn');
+        if (!detail) return;
+
+        const expanded = !detail.classList.contains('hidden');
+        if (expanded) {
+            detail.classList.add('hidden');
+            if (eyeBtn) { eyeBtn.innerHTML = this._eyeSVG(); eyeBtn.style.color = 'rgba(255,255,255,0.85)'; }
+        } else {
+            detail.classList.remove('hidden');
+            if (eyeBtn) { eyeBtn.innerHTML = this._eyeOffSVG(); eyeBtn.style.color = 'rgba(255,255,255,0.35)'; }
+        }
+    },
+
+    _updateVarCompact(nodeId) {
+        const node = this.nodes[nodeId];
+        if (!node) return;
+        const el = this.nodesContainer.querySelector(`#node-${nodeId} .var-compact`);
+        if (el) el.textContent = this._buildVarCompact(node.varType, node.varValue);
     },
 
     // ── Helpers ───────────────────────────────────────────────────────────────

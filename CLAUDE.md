@@ -62,9 +62,16 @@ Convention : **1 entrée JSON + 1 sortie JSON** par brique. Les types supportés
 - Chargement fichier : `<input type="file" accept=".json">` → `Storage.fromJSONString()`
 
 ### Export (Exporter.js)
-- `toPython()` : tri topologique BFS, embed les `scriptContent` de chaque nœud Python, génère `run_workflow()`
+- `validate(workflowData)` : contrôle pré-export → `{ valid, hasWarnings, errors }`. Vérifie : nœud DÉPART présent et connecté, briques python/process avec script chargé, nœuds isolés. Appelé dans `exportPython()` avant génération.
+- `toPython()` : tri topologique BFS + **niveaux d'exécution** (`_computeLevels`). Les nœuds de même niveau s'exécutent en parallèle via `ThreadPoolExecutor`. Génère : `NexusMonitor` (superviseur ANSI), fonctions wrapper `_run_<nodeId>(data, monitor)` par nœud, orchestrateur `run_workflow()` avec level groups. Sous-processus embarqués via `run_subflow_<sfName>()`.
 - `toSetupBat(deps, name)` : collecte `scriptMeta.dependencies`, génère le script de création `.venv`
 - `collectDependencies(nodes)` : helper séparé appelé depuis `app.js`
+
+#### NexusMonitor (généré dans le script exporté)
+Classe Python embarquée. Suit l'état de chaque nœud (PENDING/RUNNING/OK/ERROR/SKIPPED). Réécrit le tableau ANSI en place (ANSI cursor-up) si stdout est un TTY. `print_summary()` affiche le bilan final. Méthodes : `start_node(id)`, `finish_node(id)`, `error_node(id, exc)`, `skip_node(id)`.
+
+#### Noms de fonctions wrapper
+Le nom est `_run_<safe(nodeId)>` (basé sur le nodeId, toujours unique). L'appel interne utilise `<safe(meta.name)>` pour les briques Python (la fonction doit exister dans le script embarqué) ou `_nexus_call_process(PROC_..., ext, params)` pour les processus.
 
 ### Autres modules
 - `StatusBar.js` — compteurs nœuds/liens/scripts et indicateur sauvegarde dans le footer ; `markSaved()` / `markUnsaved()`

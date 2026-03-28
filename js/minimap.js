@@ -18,6 +18,7 @@ class MiniMap {
         this.typeColors = {
             start:     '#16a34a',
             python:    '#ca8a04',
+            process:   '#dc2626',
             api:       '#0d9488',
             operator:  '#2563eb',
             timing:    '#db2777',
@@ -146,11 +147,15 @@ class MiniMap {
             this._roundRect(ctx, mx, my, mw, mh, 2);
             ctx.fill();
 
-            // Bande colorée gauche
+            // Bande colorée en haut (header)
+            const headerH = Math.max(3, mh * 0.28);
+            ctx.globalAlpha = node.disabled ? 0.3 : 0.9;
+            ctx.save();
+            this._roundRect(ctx, mx, my, mw, mh, 2);
+            ctx.clip();
             ctx.fillStyle = color;
-            ctx.globalAlpha = node.disabled ? 0.3 : 1;
-            this._roundRect(ctx, mx, my, Math.max(2, mw * 0.12), mh, 2);
-            ctx.fill();
+            ctx.fillRect(mx, my, mw, headerH);
+            ctx.restore();
             ctx.globalAlpha = 1;
 
             // Bordure

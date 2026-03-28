@@ -184,7 +184,26 @@ function openExportMenu() {
 }
 
 function exportPython() {
-    const data   = mainEditor.toJSON(currentWorkflowName);
+    const data       = mainEditor.toJSON(currentWorkflowName);
+    const validation = Exporter.validate(data);
+
+    if (!validation.valid) {
+        const errs = validation.errors
+            .filter(e => e.level === 'error')
+            .map(e => `  • ${e.message}`)
+            .join('\n');
+        alert(`Export impossible — erreurs détectées :\n\n${errs}`);
+        return;
+    }
+
+    if (validation.hasWarnings) {
+        const warns = validation.errors
+            .filter(e => e.level === 'warning')
+            .map(e => `  • ${e.message}`)
+            .join('\n');
+        if (!confirm(`Avertissements avant export :\n\n${warns}\n\nExporter quand même ?`)) return;
+    }
+
     const script = Exporter.toPython(data);
     const fname  = currentWorkflowName.replace(/\s+/g, '_') + '.py';
     Storage.downloadFile(fname, script, 'text/x-python');
