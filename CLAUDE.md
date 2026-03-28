@@ -19,6 +19,7 @@ Modifier les fichiers source → rafraîchir le navigateur. Aucun compilateur, a
 ```
 config.js → ScriptParser.js → Storage.js → Exporter.js → modals.js
 → WorkflowEditor/{core, nodes, links, builders, python, events, subflow}.js
+→ FormEditor.js → WorkflowEditor/form.js
 → minimap.js → StatusBar.js → ParamModal.js → app.js
 ```
 
@@ -30,17 +31,20 @@ La classe est découpée en sous-modules via `Object.assign` sur le prototype :
 - `links.js` — création/suppression de liens, rendu SVG, mise à jour caméra/transform
 - `builders.js` — constructeurs HTML pour chaque type de nœud
 - `python.js` — `loadScriptForNode(nodeId, file)` : lit un `.py`, appelle `ScriptParser.parse()`, met à jour `node.scriptMeta` ; `loadProcessScriptForNode(nodeId, file)` : idem pour nœud `process` via `ScriptParser.parseProcess()`
-- `events.js` — drag & drop workspace/nœuds, zoom, sélection par rectangle, événements variable
+- `events.js` — drag & drop workspace/nœuds, zoom, sélection par rectangle, événements variable/form
 - `subflow.js` — modal sous-processus ; `modalEditor` est une seconde instance de `WorkflowEditor`
+- `form.js` — brique formulaire : `_buildFormBody`, `_toggleFormBody`, `_updateFormNodePorts`, fonctions globales `openFormModal`/`closeFormModal`
 
 Deux instances globales : `mainEditor` (workspace principal) et `modalEditor` (sous-processus).
 
 `forcedId` dans `createNode` préserve les IDs lors du rechargement JSON pour que les liens restent valides.
 
 ### Types de nœuds (`config.js` → `NODE_TYPES`)
-`start`, `python`, `process`, `api`, `operator`, `timing`, `condition`, `subflow`, `note`, `loop`, `variable`, `subflow_start`, `subflow_end` (ces deux derniers sont internes aux sous-processus, non affichés dans la palette).
+`start`, `python`, `process`, `api`, `operator`, `timing`, `condition`, `subflow`, `note`, `loop`, `variable`, `form`, `subflow_start`, `subflow_end` (ces deux derniers sont internes aux sous-processus, non affichés dans la palette).
 
 Les nœuds `python` et `process` ont toujours `in_trig + in_data` → `out_trig + out_data`. Les nœuds `variable` ont uniquement `out_value` et stockent `varType`, `varName`, `varValue`, `varDescription`.
+
+Le nœud `form` a `in_trig + in_data` → `out_trig + out_data` + ports dynamiques. Il stocke `formData` (JSON du formulaire). Le modal `FormEditor` (instance `formEditorInstance`) permet de placer des composants visuels (text_input, checkbox, select_list, button, label, file_open, folder_open, file_save, folder_save) sur un canvas de formulaire redimensionnable. Chaque composant avec `hasPort: true` crée un port OUT dynamique sur le nœud. À l'export, `FormEditor.toPythonFormCode()` génère un QDialog PyQt5 avec les widgets correspondants.
 
 Le nœud `process` accepte `.bat`, `.cmd`, `.exe`, `.sh`, `.ps1`. Pour les `.exe`, le contenu n'est pas parsé. Pour les autres, `ScriptParser.parseProcess(content, fileName)` extrait les tags `@workflow:` depuis les commentaires natifs de chaque format (`::`/`REM` pour .bat/.cmd, `<# #>` ou `#` pour .ps1, `#` pour .sh).
 
@@ -77,6 +81,7 @@ Le nom est `_run_<safe(nodeId)>` (basé sur le nodeId, toujours unique). L'appel
 - `StatusBar.js` — compteurs nœuds/liens/scripts et indicateur sauvegarde dans le footer ; `markSaved()` / `markUnsaved()`
 - `ParamModal.js` — modal d'édition des `paramValues` d'un nœud Python (valeurs IN libres ou lecture seule si port connecté) ; instance globale `paramModal`
 - `modals.js` — `showActionModal(opts, onConfirm)` (confirmation non-bloquante) et `showVarInfoModal(nodeId, node, notifyChange)` (description variable)
+- `FormEditor.js` — `FormEditor` : éditeur visuel de formulaires dans une modal ; composants drag & drop sur canvas ; `toPythonFormCode()` génère du PyQt5 ; `toJSON()` / `fromJSON()` pour sérialisation
 - `minimap.js` — `MiniMap` : canvas 2D représentant les nœuds à l'échelle, cliquable pour naviguer
 
 ### Raccourcis clavier (`app.js`)

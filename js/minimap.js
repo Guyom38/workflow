@@ -27,6 +27,7 @@ class MiniMap {
             note:      '#475569',
             loop:      '#0891b2',
             variable:  '#be185d',
+            form:      '#6366f1',
         };
 
         this.toggleBtn?.addEventListener('click', () => this.toggle());

@@ -50,6 +50,10 @@ class Exporter {
                 errors.push({ nodeId: n.id, level: 'warning',
                     message: `Processus sans fichier : "${n.label || n.id}".` });
             }
+            if (n.type === 'form' && (!n.formData || !n.formData.elements || n.formData.elements.length === 0)) {
+                errors.push({ nodeId: n.id, level: 'warning',
+                    message: `Formulaire vide : "${n.label || n.formData?.formTitle || n.id}".` });
+            }
         });
 
         // 3. Nœuds complètement isolés (sauf note)
@@ -79,7 +83,7 @@ class Exporter {
         const ordered = Exporter._topologicalOrder(nodes, links);
         const levels  = Exporter._computeLevels(nodes, links);
 
-        const EXEC_TYPES = new Set(['python', 'process', 'variable', 'subflow', 'api', 'operator', 'timing', 'condition', 'loop']);
+        const EXEC_TYPES = new Set(['python', 'process', 'variable', 'subflow', 'form', 'api', 'operator', 'timing', 'condition', 'loop']);
         const execNodes  = ordered.filter(id => nodes[id] && EXEC_TYPES.has(nodes[id].type));
 
         // ── Collecte des scripts, processus, dépendances ──────────────────────
@@ -147,6 +151,22 @@ class Exporter {
                     subflowFunctions.push(code);
                     deps.forEach(d => allDependencies.add(d));
                     if (needsProc) hasProcessNodes = true;
+                }
+            }
+
+            else if (node.type === 'form') {
+                if (node.formData) {
+                    const formCode = FormEditor.toPythonFormCode(node.formData, '_show_form_' + safe);
+                    if (formCode) embeddedScripts.push(
+                        `# ${'─'.repeat(60)}\n` +
+                        `# Formulaire : ${node.formData.formTitle || node.label || nodeId}\n` +
+                        `# ${'─'.repeat(60)}\n` +
+                        formCode + '\n'
+                    );
+                    allDependencies.add('PyQt5');
+                    nodeInfo[nodeId] = { kind: 'form', node, safe };
+                } else {
+                    nodeInfo[nodeId] = { kind: 'form_empty', node, safe };
                 }
             }
 
@@ -590,6 +610,14 @@ class NexusMonitor:
                 } else {
                     innerBody = `        # Sous-processus non configuré — ignoré\n        _result = {}`;
                 }
+                break;
+
+            case 'form':
+                innerBody = `        _result = _show_form_${safe}(dict(data))`;
+                break;
+
+            case 'form_empty':
+                innerBody = `        # Formulaire non configuré — ignoré\n        _result = {}`;
                 break;
 
             case 'api':

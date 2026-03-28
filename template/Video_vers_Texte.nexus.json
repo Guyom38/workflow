@@ -1,0 +1,670 @@
+{
+  "version": "2.0.0",
+  "id": "tpl_video_to_text",
+  "name": "Video vers Texte",
+  "savedAt": "2026-03-28T18:11:26.672Z",
+  "nodes": {
+    "node_start": {
+      "id": "node_start",
+      "type": "start",
+      "x": -180,
+      "y": 100,
+      "disabled": false,
+      "portsHidden": true,
+      "label": "",
+      "scriptName": "",
+      "scriptContent": "",
+      "scriptMeta": null,
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "var_fichier": {
+      "id": "var_fichier",
+      "type": "variable",
+      "x": -660,
+      "y": 40,
+      "disabled": false,
+      "portsHidden": true,
+      "label": "",
+      "scriptName": "",
+      "scriptContent": "",
+      "scriptMeta": null,
+      "varName": "fichier_source",
+      "varType": "string",
+      "varValue": "./input/video.mp4",
+      "varDescription": "Chemin vers le fichier video ou audio source",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "var_dossier": {
+      "id": "var_dossier",
+      "type": "variable",
+      "x": 1280,
+      "y": 540,
+      "disabled": false,
+      "portsHidden": true,
+      "label": "",
+      "scriptName": "",
+      "scriptContent": "",
+      "scriptMeta": null,
+      "varName": "dossier_sortie",
+      "varType": "string",
+      "varValue": "./output",
+      "varDescription": "Dossier de sortie pour tous les fichiers",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "node_extraire": {
+      "id": "node_extraire",
+      "type": "python",
+      "x": 80,
+      "y": 140,
+      "disabled": false,
+      "portsHidden": false,
+      "label": "Extraire Audio",
+      "scriptName": "extraire_audio.py",
+      "scriptContent": "\"\"\"\n@workflow:name: Extraire Audio\n@workflow:description: Extrait la piste audio d'un fichier video ou convertit un fichier audio en WAV 16kHz mono via ffmpeg.\n@workflow:input: {\n    \"fichier_source\":   {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier video ou audio source\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination pour le fichier WAV\"},\n    \"nom_sortie\":       {\"type\": \"string\",  \"default\": \"audio_brut.wav\",             \"description\": \"Nom du fichier WAV genere\"},\n    \"frequence\":        {\"type\": \"int\",     \"default\": 16000, \"min\": 8000, \"max\": 48000, \"description\": \"Frequence d'echantillonnage en Hz\"},\n    \"canaux\":           {\"type\": \"int\",     \"default\": 1, \"min\": 1, \"max\": 2,       \"description\": \"Nombre de canaux audio (1=mono, 2=stereo)\"}\n}\n@workflow:output: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"description\": \"Chemin absolu vers le fichier WAV produit\"},\n    \"duree_secondes\":   {\"type\": \"float\",   \"description\": \"Duree du fichier audio en secondes\"},\n    \"est_video\":        {\"type\": \"bool\",    \"description\": \"True si le fichier source etait une video\"}\n}\n@workflow:dependencies: pydub\n\"\"\"\n# ──────────────────────────────────────────────────────────────────────────────\n#  NEXUS — Extraire Audio\n#\n#  Extrait la piste audio d'une video ou convertit un fichier audio existant\n#  en WAV 16 kHz mono, pret pour les etapes suivantes du pipeline.\n#  Necessite ffmpeg installe et accessible dans le PATH.\n# ──────────────────────────────────────────────────────────────────────────────\n\nimport os\nimport json\nimport subprocess\nimport re\nimport time\nfrom pathlib import Path\n\n\nEXTENSIONS_AUDIO = (\".wav\", \".mp3\", \".m4a\", \".aac\", \".ogg\", \".flac\", \".wma\", \".opus\")\n\n\ndef extraire_audio(params: dict) -> dict:\n    \"\"\"\n    Extrait ou convertit l'audio d'un fichier source en WAV.\n\n    Args:\n        params: Dictionnaire des parametres d'entree.\n\n    Returns:\n        Dictionnaire contenant le chemin audio, la duree et le type source.\n    \"\"\"\n    fichier_source = params.get(\"fichier_source\", \"\")\n    dossier_sortie = params.get(\"dossier_sortie\", \"./output\")\n    nom_sortie     = params.get(\"nom_sortie\", \"audio_brut.wav\")\n    frequence      = int(params.get(\"frequence\", 16000))\n    canaux         = int(params.get(\"canaux\", 1))\n\n    if not fichier_source or not os.path.isfile(fichier_source):\n        raise FileNotFoundError(f\"Fichier source introuvable : {fichier_source}\")\n\n    Path(dossier_sortie).mkdir(parents=True, exist_ok=True)\n    chemin_sortie = os.path.join(dossier_sortie, nom_sortie)\n\n    ext = os.path.splitext(fichier_source)[1].lower()\n    est_video = ext not in EXTENSIONS_AUDIO\n\n    # Construction de la commande ffmpeg\n    cmd = [\n        \"ffmpeg\", \"-y\", \"-i\", fichier_source,\n    ]\n    if est_video:\n        cmd.append(\"-vn\")  # Supprimer la piste video\n\n    cmd.extend([\n        \"-acodec\", \"pcm_s16le\",\n        \"-ar\", str(frequence),\n        \"-ac\", str(canaux),\n        chemin_sortie,\n    ])\n\n    debut = time.time()\n    resultat = subprocess.run(cmd, capture_output=True, text=True)\n    duree_traitement = time.time() - debut\n\n    if resultat.returncode != 0:\n        raise RuntimeError(f\"Erreur ffmpeg (code {resultat.returncode}) : {resultat.stderr[:500]}\")\n\n    # Recuperer la duree du fichier produit\n    duree_secondes = _obtenir_duree(chemin_sortie)\n\n    print(f\"[Extraire Audio] {'Video' if est_video else 'Audio'} -> WAV en {duree_traitement:.1f}s \"\n          f\"({duree_secondes:.1f}s, {frequence}Hz, {canaux}ch)\")\n\n    return {\n        \"chemin_audio\":   os.path.abspath(chemin_sortie),\n        \"duree_secondes\": duree_secondes,\n        \"est_video\":      est_video,\n    }\n\n\ndef _obtenir_duree(chemin_wav: str) -> float:\n    \"\"\"Recupere la duree d'un fichier audio via ffprobe.\"\"\"\n    cmd = [\"ffprobe\", \"-v\", \"error\", \"-show_entries\", \"format=duration\",\n           \"-of\", \"default=noprint_wrappers=1:nokey=1\", chemin_wav]\n    try:\n        resultat = subprocess.run(cmd, capture_output=True, text=True)\n        return float(resultat.stdout.strip())\n    except Exception:\n        return 0.0\n\n\n# ── Point d'entree autonome ──────────────────────────────────────────────────\nif __name__ == \"__main__\":\n    import sys\n    donnees = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\n    try:\n        resultat = extraire_audio(donnees)\n        print(json.dumps(resultat, ensure_ascii=False, indent=2))\n    except Exception as e:\n        print(json.dumps({\"erreur\": str(e), \"type\": type(e).__name__}, ensure_ascii=False, indent=2))\n        sys.exit(1)\n",
+      "scriptMeta": {
+        "name": "Extraire Audio",
+        "description": "Extrait la piste audio d'un fichier video ou convertit un fichier audio en WAV 16kHz mono via ffmpeg.",
+        "input": {
+          "fichier_source": {
+            "type": "string",
+            "required": true,
+            "description": "Chemin vers le fichier video ou audio source"
+          },
+          "dossier_sortie": {
+            "type": "string",
+            "default": "./output",
+            "description": "Dossier de destination pour le fichier WAV"
+          },
+          "nom_sortie": {
+            "type": "string",
+            "default": "audio_brut.wav",
+            "description": "Nom du fichier WAV genere"
+          },
+          "frequence": {
+            "type": "int",
+            "default": 16000,
+            "min": 8000,
+            "max": 48000,
+            "description": "Frequence d'echantillonnage en Hz"
+          },
+          "canaux": {
+            "type": "int",
+            "default": 1,
+            "min": 1,
+            "max": 2,
+            "description": "Nombre de canaux audio (1=mono, 2=stereo)"
+          }
+        },
+        "output": {
+          "chemin_audio": {
+            "type": "string",
+            "description": "Chemin absolu vers le fichier WAV produit"
+          },
+          "duree_secondes": {
+            "type": "float",
+            "description": "Duree du fichier audio en secondes"
+          },
+          "est_video": {
+            "type": "bool",
+            "description": "True si le fichier source etait une video"
+          }
+        },
+        "dependencies": [
+          "pydub"
+        ],
+        "raw": "\n@workflow:name: Extraire Audio\n@workflow:description: Extrait la piste audio d'un fichier video ou convertit un fichier audio en WAV 16kHz mono via ffmpeg.\n@workflow:input: {\n    \"fichier_source\":   {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier video ou audio source\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination pour le fichier WAV\"},\n    \"nom_sortie\":       {\"type\": \"string\",  \"default\": \"audio_brut.wav\",             \"description\": \"Nom du fichier WAV genere\"},\n    \"frequence\":        {\"type\": \"int\",     \"default\": 16000, \"min\": 8000, \"max\": 48000, \"description\": \"Frequence d'echantillonnage en Hz\"},\n    \"canaux\":           {\"type\": \"int\",     \"default\": 1, \"min\": 1, \"max\": 2,       \"description\": \"Nombre de canaux audio (1=mono, 2=stereo)\"}\n}\n@workflow:output: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"description\": \"Chemin absolu vers le fichier WAV produit\"},\n    \"duree_secondes\":   {\"type\": \"float\",   \"description\": \"Duree du fichier audio en secondes\"},\n    \"est_video\":        {\"type\": \"bool\",    \"description\": \"True si le fichier source etait une video\"}\n}\n@workflow:dependencies: pydub\n"
+      },
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "node_bruit": {
+      "id": "node_bruit",
+      "type": "python",
+      "x": 480,
+      "y": 140,
+      "disabled": false,
+      "portsHidden": false,
+      "label": "Reduire Bruit",
+      "scriptName": "reduire_bruit.py",
+      "scriptContent": "\"\"\"\n@workflow:name: Reduire Bruit\n@workflow:description: Applique une reduction de bruit sur un fichier audio WAV via noisereduce (reduction spectrale non-stationnaire).\n@workflow:input: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier WAV a traiter\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination\"},\n    \"nom_sortie\":       {\"type\": \"string\",  \"default\": \"audio_denoise.wav\",          \"description\": \"Nom du fichier WAV debruite\"},\n    \"force_reduction\":  {\"type\": \"float\",   \"default\": 0.75,                         \"description\": \"Intensite de la reduction (0.0 a 1.0)\"},\n    \"stationnaire\":     {\"type\": \"bool\",    \"default\": false,                        \"description\": \"Utiliser le mode stationnaire (bruit constant)\"}\n}\n@workflow:output: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"description\": \"Chemin absolu vers le fichier WAV debruite\"},\n    \"duree_secondes\":   {\"type\": \"float\",   \"description\": \"Duree du fichier audio en secondes\"},\n    \"echantillons\":     {\"type\": \"int\",     \"description\": \"Nombre total d'echantillons traites\"}\n}\n@workflow:dependencies: noisereduce,numpy,soundfile\n\"\"\"\n# ──────────────────────────────────────────────────────────────────────────────\n#  NEXUS — Reduire Bruit\n#\n#  Applique noisereduce sur un fichier WAV pour attenuer le bruit de fond.\n#  Supporte le mode non-stationnaire (par defaut) et stationnaire.\n# ──────────────────────────────────────────────────────────────────────────────\n\nimport os\nimport json\nimport time\nfrom pathlib import Path\n\nimport numpy as np\nimport soundfile as sf\nimport noisereduce as nr\n\n\ndef reduire_bruit(params: dict) -> dict:\n    \"\"\"\n    Reduit le bruit d'un fichier audio WAV.\n\n    Args:\n        params: Dictionnaire des parametres d'entree.\n\n    Returns:\n        Dictionnaire contenant le chemin du fichier debruite et ses metadonnees.\n    \"\"\"\n    chemin_audio     = params.get(\"chemin_audio\", \"\")\n    dossier_sortie   = params.get(\"dossier_sortie\", \"./output\")\n    nom_sortie       = params.get(\"nom_sortie\", \"audio_denoise.wav\")\n    force_reduction  = float(params.get(\"force_reduction\", 0.75))\n    stationnaire     = bool(params.get(\"stationnaire\", False))\n\n    if not chemin_audio or not os.path.isfile(chemin_audio):\n        raise FileNotFoundError(f\"Fichier audio introuvable : {chemin_audio}\")\n\n    Path(dossier_sortie).mkdir(parents=True, exist_ok=True)\n    chemin_sortie = os.path.join(dossier_sortie, nom_sortie)\n\n    # Lecture du fichier audio\n    donnees, frequence = sf.read(chemin_audio)\n    duree = len(donnees) / frequence\n\n    if donnees.dtype != np.float64:\n        donnees = donnees.astype(np.float64)\n\n    print(f\"[Reduire Bruit] {len(donnees):,} echantillons — {duree:.1f}s @ {frequence}Hz\")\n\n    # Application de la reduction de bruit\n    debut = time.time()\n    donnees_reduites = nr.reduce_noise(\n        y=donnees,\n        sr=frequence,\n        prop_decrease=force_reduction,\n        n_fft=2048,\n        stationary=stationnaire,\n    )\n    duree_traitement = time.time() - debut\n\n    # Ecriture du fichier de sortie\n    sf.write(chemin_sortie, donnees_reduites, frequence)\n\n    print(f\"[Reduire Bruit] Traite en {duree_traitement:.1f}s — {chemin_sortie}\")\n\n    return {\n        \"chemin_audio\":   os.path.abspath(chemin_sortie),\n        \"duree_secondes\": duree,\n        \"echantillons\":   len(donnees_reduites),\n    }\n\n\n# ── Point d'entree autonome ──────────────────────────────────────────────────\nif __name__ == \"__main__\":\n    import sys\n    donnees_entree = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\n    try:\n        resultat = reduire_bruit(donnees_entree)\n        print(json.dumps(resultat, ensure_ascii=False, indent=2))\n    except Exception as e:\n        print(json.dumps({\"erreur\": str(e), \"type\": type(e).__name__}, ensure_ascii=False, indent=2))\n        sys.exit(1)\n",
+      "scriptMeta": {
+        "name": "Reduire Bruit",
+        "description": "Applique une reduction de bruit sur un fichier audio WAV via noisereduce (reduction spectrale non-stationnaire).",
+        "input": {
+          "chemin_audio": {
+            "type": "string",
+            "required": true,
+            "description": "Chemin vers le fichier WAV a traiter"
+          },
+          "dossier_sortie": {
+            "type": "string",
+            "default": "./output",
+            "description": "Dossier de destination"
+          },
+          "nom_sortie": {
+            "type": "string",
+            "default": "audio_denoise.wav",
+            "description": "Nom du fichier WAV debruite"
+          },
+          "force_reduction": {
+            "type": "float",
+            "default": 0.75,
+            "description": "Intensite de la reduction (0.0 a 1.0)"
+          },
+          "stationnaire": {
+            "type": "bool",
+            "default": false,
+            "description": "Utiliser le mode stationnaire (bruit constant)"
+          }
+        },
+        "output": {
+          "chemin_audio": {
+            "type": "string",
+            "description": "Chemin absolu vers le fichier WAV debruite"
+          },
+          "duree_secondes": {
+            "type": "float",
+            "description": "Duree du fichier audio en secondes"
+          },
+          "echantillons": {
+            "type": "int",
+            "description": "Nombre total d'echantillons traites"
+          }
+        },
+        "dependencies": [
+          "noisereduce",
+          "numpy",
+          "soundfile"
+        ],
+        "raw": "\n@workflow:name: Reduire Bruit\n@workflow:description: Applique une reduction de bruit sur un fichier audio WAV via noisereduce (reduction spectrale non-stationnaire).\n@workflow:input: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier WAV a traiter\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination\"},\n    \"nom_sortie\":       {\"type\": \"string\",  \"default\": \"audio_denoise.wav\",          \"description\": \"Nom du fichier WAV debruite\"},\n    \"force_reduction\":  {\"type\": \"float\",   \"default\": 0.75,                         \"description\": \"Intensite de la reduction (0.0 a 1.0)\"},\n    \"stationnaire\":     {\"type\": \"bool\",    \"default\": false,                        \"description\": \"Utiliser le mode stationnaire (bruit constant)\"}\n}\n@workflow:output: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"description\": \"Chemin absolu vers le fichier WAV debruite\"},\n    \"duree_secondes\":   {\"type\": \"float\",   \"description\": \"Duree du fichier audio en secondes\"},\n    \"echantillons\":     {\"type\": \"int\",     \"description\": \"Nombre total d'echantillons traites\"}\n}\n@workflow:dependencies: noisereduce,numpy,soundfile\n"
+      },
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "node_volume": {
+      "id": "node_volume",
+      "type": "python",
+      "x": 840,
+      "y": 140,
+      "disabled": false,
+      "portsHidden": false,
+      "label": "Normaliser Volume",
+      "scriptName": "normaliser_volume.py",
+      "scriptContent": "\"\"\"\n@workflow:name: Normaliser Volume\n@workflow:description: Normalise le volume d'un fichier audio WAV vers un niveau cible en dBFS via pydub.\n@workflow:input: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier WAV a normaliser\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination\"},\n    \"nom_sortie\":       {\"type\": \"string\",  \"default\": \"audio_normalise.wav\",        \"description\": \"Nom du fichier WAV normalise\"},\n    \"niveau_cible\":     {\"type\": \"float\",   \"default\": -20.0,                        \"description\": \"Niveau cible en dBFS (-30 a 0)\"}\n}\n@workflow:output: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"description\": \"Chemin absolu vers le fichier WAV normalise\"},\n    \"volume_avant\":     {\"type\": \"float\",   \"description\": \"Volume d'origine en dBFS\"},\n    \"volume_apres\":     {\"type\": \"float\",   \"description\": \"Volume apres normalisation en dBFS\"},\n    \"gain_applique\":    {\"type\": \"float\",   \"description\": \"Gain applique en dB\"}\n}\n@workflow:dependencies: pydub\n\"\"\"\n# ──────────────────────────────────────────────────────────────────────────────\n#  NEXUS — Normaliser Volume\n#\n#  Ajuste le volume d'un fichier WAV pour atteindre un niveau cible en dBFS.\n#  Necessite ffmpeg pour le decodage via pydub.\n# ──────────────────────────────────────────────────────────────────────────────\n\nimport os\nimport json\nfrom pathlib import Path\nfrom pydub import AudioSegment\n\n\ndef normaliser_volume(params: dict) -> dict:\n    \"\"\"\n    Normalise le volume d'un fichier audio WAV.\n\n    Args:\n        params: Dictionnaire des parametres d'entree.\n\n    Returns:\n        Dictionnaire contenant le chemin normalise et les niveaux de volume.\n    \"\"\"\n    chemin_audio   = params.get(\"chemin_audio\", \"\")\n    dossier_sortie = params.get(\"dossier_sortie\", \"./output\")\n    nom_sortie     = params.get(\"nom_sortie\", \"audio_normalise.wav\")\n    niveau_cible   = float(params.get(\"niveau_cible\", -20.0))\n\n    if not chemin_audio or not os.path.isfile(chemin_audio):\n        raise FileNotFoundError(f\"Fichier audio introuvable : {chemin_audio}\")\n\n    Path(dossier_sortie).mkdir(parents=True, exist_ok=True)\n    chemin_sortie = os.path.join(dossier_sortie, nom_sortie)\n\n    # Chargement de l'audio\n    audio = AudioSegment.from_wav(chemin_audio)\n    volume_avant = audio.dBFS\n    duree_sec = len(audio) / 1000\n\n    # Calcul et application du gain\n    gain = niveau_cible - volume_avant\n    audio_normalise = audio.apply_gain(gain)\n\n    # Export\n    audio_normalise.export(chemin_sortie, format=\"wav\")\n\n    print(f\"[Normaliser Volume] {duree_sec:.1f}s — {volume_avant:.1f} dBFS -> {niveau_cible:.1f} dBFS (gain: {gain:+.1f} dB)\")\n\n    return {\n        \"chemin_audio\":  os.path.abspath(chemin_sortie),\n        \"volume_avant\":  round(volume_avant, 2),\n        \"volume_apres\":  round(niveau_cible, 2),\n        \"gain_applique\": round(gain, 2),\n    }\n\n\n# ── Point d'entree autonome ──────────────────────────────────────────────────\nif __name__ == \"__main__\":\n    import sys\n    donnees = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\n    try:\n        resultat = normaliser_volume(donnees)\n        print(json.dumps(resultat, ensure_ascii=False, indent=2))\n    except Exception as e:\n        print(json.dumps({\"erreur\": str(e), \"type\": type(e).__name__}, ensure_ascii=False, indent=2))\n        sys.exit(1)\n",
+      "scriptMeta": {
+        "name": "Normaliser Volume",
+        "description": "Normalise le volume d'un fichier audio WAV vers un niveau cible en dBFS via pydub.",
+        "input": {
+          "chemin_audio": {
+            "type": "string",
+            "required": true,
+            "description": "Chemin vers le fichier WAV a normaliser"
+          },
+          "dossier_sortie": {
+            "type": "string",
+            "default": "./output",
+            "description": "Dossier de destination"
+          },
+          "nom_sortie": {
+            "type": "string",
+            "default": "audio_normalise.wav",
+            "description": "Nom du fichier WAV normalise"
+          },
+          "niveau_cible": {
+            "type": "float",
+            "default": -20,
+            "description": "Niveau cible en dBFS (-30 a 0)"
+          }
+        },
+        "output": {
+          "chemin_audio": {
+            "type": "string",
+            "description": "Chemin absolu vers le fichier WAV normalise"
+          },
+          "volume_avant": {
+            "type": "float",
+            "description": "Volume d'origine en dBFS"
+          },
+          "volume_apres": {
+            "type": "float",
+            "description": "Volume apres normalisation en dBFS"
+          },
+          "gain_applique": {
+            "type": "float",
+            "description": "Gain applique en dB"
+          }
+        },
+        "dependencies": [
+          "pydub"
+        ],
+        "raw": "\n@workflow:name: Normaliser Volume\n@workflow:description: Normalise le volume d'un fichier audio WAV vers un niveau cible en dBFS via pydub.\n@workflow:input: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier WAV a normaliser\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination\"},\n    \"nom_sortie\":       {\"type\": \"string\",  \"default\": \"audio_normalise.wav\",        \"description\": \"Nom du fichier WAV normalise\"},\n    \"niveau_cible\":     {\"type\": \"float\",   \"default\": -20.0,                        \"description\": \"Niveau cible en dBFS (-30 a 0)\"}\n}\n@workflow:output: {\n    \"chemin_audio\":     {\"type\": \"string\",  \"description\": \"Chemin absolu vers le fichier WAV normalise\"},\n    \"volume_avant\":     {\"type\": \"float\",   \"description\": \"Volume d'origine en dBFS\"},\n    \"volume_apres\":     {\"type\": \"float\",   \"description\": \"Volume apres normalisation en dBFS\"},\n    \"gain_applique\":    {\"type\": \"float\",   \"description\": \"Gain applique en dB\"}\n}\n@workflow:dependencies: pydub\n"
+      },
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "node_transcrire": {
+      "id": "node_transcrire",
+      "type": "python",
+      "x": 1200,
+      "y": 140,
+      "disabled": false,
+      "portsHidden": false,
+      "label": "Transcrire Audio",
+      "scriptName": "transcrire_audio.py",
+      "scriptContent": "\"\"\"\n@workflow:name: Transcrire Audio\n@workflow:description: Transcrit un fichier audio en texte via Whisper avec detection optionnelle des locuteurs par diarisation MFCC.\n@workflow:input: {\n    \"chemin_audio\":         {\"type\": \"string\",  \"required\": true,                            \"description\": \"Chemin vers le fichier WAV a transcrire\"},\n    \"taille_modele\":        {\"type\": \"list\",    \"options\": [\"tiny\", \"base\", \"small\", \"medium\", \"large\"], \"default\": \"base\", \"description\": \"Taille du modele Whisper\"},\n    \"langue\":               {\"type\": \"list\",    \"options\": [\"auto\", \"fr\", \"en\", \"es\", \"de\", \"it\", \"pt\", \"nl\", \"ja\", \"zh\"], \"default\": \"auto\", \"description\": \"Langue de l'audio (auto = detection automatique)\"},\n    \"detection_locuteurs\":  {\"type\": \"bool\",    \"default\": true,                             \"description\": \"Activer la detection des locuteurs (diarisation)\"},\n    \"nombre_locuteurs\":     {\"type\": \"int\",     \"default\": 0, \"min\": 0, \"max\": 10,          \"description\": \"Nombre de locuteurs attendus (0 = estimation automatique)\"}\n}\n@workflow:output: {\n    \"segments\":             {\"type\": \"array\",   \"description\": \"Liste des segments {start, end, text, speaker}\"},\n    \"texte_complet\":        {\"type\": \"string\",  \"description\": \"Transcription complete concatenee\"},\n    \"langue_detectee\":      {\"type\": \"string\",  \"description\": \"Code langue detecte par Whisper\"},\n    \"nombre_segments\":      {\"type\": \"int\",     \"description\": \"Nombre total de segments transcrits\"},\n    \"nombre_locuteurs\":     {\"type\": \"int\",     \"description\": \"Nombre de locuteurs identifies\"}\n}\n@workflow:dependencies: openai-whisper,torch,numpy,soundfile,librosa,scikit-learn\n\"\"\"\n# ──────────────────────────────────────────────────────────────────────────────\n#  NEXUS — Transcrire Audio\n#\n#  Utilise OpenAI Whisper pour la transcription speech-to-text.\n#  Diarisation optionnelle via MFCC + clustering agglomeratif.\n# ──────────────────────────────────────────────────────────────────────────────\n\nimport os\nimport json\nimport time\n\nimport whisper\nimport numpy as np\nimport soundfile as sf\nimport librosa\nfrom sklearn.cluster import AgglomerativeClustering\nfrom sklearn.preprocessing import StandardScaler\n\n\ndef transcrire_audio(params: dict) -> dict:\n    \"\"\"\n    Transcrit un fichier audio en texte avec detection optionnelle des locuteurs.\n\n    Args:\n        params: Dictionnaire des parametres d'entree.\n\n    Returns:\n        Dictionnaire contenant les segments, le texte complet et les metadonnees.\n    \"\"\"\n    chemin_audio        = params.get(\"chemin_audio\", \"\")\n    taille_modele       = params.get(\"taille_modele\", \"base\")\n    langue              = params.get(\"langue\", \"auto\")\n    detection_locuteurs = bool(params.get(\"detection_locuteurs\", True))\n    nombre_locuteurs    = int(params.get(\"nombre_locuteurs\", 0))\n\n    if not chemin_audio or not os.path.isfile(chemin_audio):\n        raise FileNotFoundError(f\"Fichier audio introuvable : {chemin_audio}\")\n\n    # Chargement du modele Whisper\n    print(f\"[Transcrire Audio] Chargement du modele '{taille_modele}'...\")\n    modele = whisper.load_model(taille_modele)\n\n    # Transcription\n    print(f\"[Transcrire Audio] Transcription en cours...\")\n    debut = time.time()\n\n    options = {}\n    if langue and langue != \"auto\":\n        options[\"language\"] = langue\n\n    resultat = modele.transcribe(chemin_audio, verbose=False, fp16=False, **options)\n    duree_transcription = time.time() - debut\n\n    langue_detectee = resultat.get(\"language\", \"inconnu\")\n    print(f\"[Transcrire Audio] Langue detectee : {langue_detectee} — {duree_transcription:.1f}s\")\n\n    # Construction des segments\n    segments = []\n    for seg in resultat[\"segments\"]:\n        segments.append({\n            \"start\":   seg[\"start\"],\n            \"end\":     seg[\"end\"],\n            \"text\":    seg[\"text\"].strip(),\n        })\n\n    # Diarisation optionnelle\n    nb_locuteurs = 1\n    if detection_locuteurs and len(segments) > 1:\n        print(f\"[Transcrire Audio] Diarisation de {len(segments)} segments...\")\n        segments, nb_locuteurs = _diariser(segments, chemin_audio, nombre_locuteurs)\n    else:\n        for seg in segments:\n            seg[\"speaker\"] = \"Locuteur 1\"\n\n    texte_complet = resultat[\"text\"].strip()\n\n    print(f\"[Transcrire Audio] {len(segments)} segments, {nb_locuteurs} locuteur(s)\")\n\n    return {\n        \"segments\":          segments,\n        \"texte_complet\":     texte_complet,\n        \"langue_detectee\":   langue_detectee,\n        \"nombre_segments\":   len(segments),\n        \"nombre_locuteurs\":  nb_locuteurs,\n    }\n\n\n# ── Diarisation ──────────────────────────────────────────────────────────────\n\ndef _diariser(segments: list, chemin_audio: str, nombre_locuteurs: int) -> tuple:\n    \"\"\"Identifie les locuteurs par MFCC + clustering agglomeratif.\"\"\"\n    donnees, frequence = sf.read(chemin_audio)\n    if len(donnees.shape) > 1:\n        donnees = donnees[:, 0]\n\n    empreintes = []\n    indices_valides = []\n\n    for i, seg in enumerate(segments):\n        debut_ech = int(seg[\"start\"] * frequence)\n        fin_ech   = int(seg[\"end\"] * frequence)\n\n        if fin_ech <= debut_ech or fin_ech > len(donnees):\n            continue\n\n        extrait = donnees[debut_ech:fin_ech].astype(np.float32)\n\n        # Ignorer les segments trop courts (< 0.3s)\n        if len(extrait) < int(0.3 * frequence):\n            continue\n\n        try:\n            emb = _extraire_empreinte(extrait, frequence)\n            empreintes.append(emb)\n            indices_valides.append(i)\n        except Exception:\n            continue\n\n    if len(empreintes) < 2:\n        for seg in segments:\n            seg[\"speaker\"] = \"Locuteur 1\"\n        return segments, 1\n\n    # Normalisation et clustering\n    X = np.array(empreintes)\n    X_norm = StandardScaler().fit_transform(X)\n\n    if nombre_locuteurs >= 2:\n        n_clusters = min(nombre_locuteurs, len(X_norm))\n    else:\n        n_clusters = _estimer_locuteurs(X_norm)\n\n    clustering = AgglomerativeClustering(\n        n_clusters=n_clusters,\n        metric=\"cosine\",\n        linkage=\"average\",\n    )\n    etiquettes = clustering.fit_predict(X_norm)\n\n    # Assignation des locuteurs\n    carte = {}\n    idx_loc = 0\n    for etiq in etiquettes:\n        if etiq not in carte:\n            carte[etiq] = idx_loc\n            idx_loc += 1\n\n    for idx, seg_i in enumerate(indices_valides):\n        segments[seg_i][\"speaker\"] = f\"Locuteur {carte[etiquettes[idx]] + 1}\"\n\n    for seg in segments:\n        if \"speaker\" not in seg:\n            seg[\"speaker\"] = \"Locuteur 1\"\n\n    nb_locuteurs = len(set(seg[\"speaker\"] for seg in segments))\n    return segments, nb_locuteurs\n\n\ndef _extraire_empreinte(extrait_audio: np.ndarray, frequence: int) -> np.ndarray:\n    \"\"\"Extrait une empreinte vocale via MFCC + features spectrales.\"\"\"\n    mfcc = librosa.feature.mfcc(y=extrait_audio, sr=frequence, n_mfcc=20, n_fft=2048, hop_length=512)\n    mfcc_delta  = librosa.feature.delta(mfcc)\n    mfcc_delta2 = librosa.feature.delta(mfcc, order=2)\n\n    centroid  = librosa.feature.spectral_centroid(y=extrait_audio, sr=frequence, hop_length=512)\n    bandwidth = librosa.feature.spectral_bandwidth(y=extrait_audio, sr=frequence, hop_length=512)\n    rolloff   = librosa.feature.spectral_rolloff(y=extrait_audio, sr=frequence, hop_length=512)\n    zcr       = librosa.feature.zero_crossing_rate(extrait_audio, hop_length=512)\n\n    f0 = librosa.yin(extrait_audio, fmin=50, fmax=500, sr=frequence, hop_length=512)\n    f0_valide = f0[f0 > 0]\n    f0_moy = np.mean(f0_valide) if len(f0_valide) > 0 else 0\n    f0_std = np.std(f0_valide)  if len(f0_valide) > 0 else 0\n\n    features = []\n    for feat in [mfcc, mfcc_delta, mfcc_delta2]:\n        features.extend([np.mean(feat, axis=1), np.std(feat, axis=1)])\n    for feat in [centroid, bandwidth, rolloff, zcr]:\n        features.extend([np.array([np.mean(feat)]), np.array([np.std(feat)])])\n    features.append(np.array([f0_moy, f0_std]))\n\n    return np.concatenate(features)\n\n\ndef _estimer_locuteurs(X: np.ndarray) -> int:\n    \"\"\"Estime le nombre optimal de locuteurs via le score silhouette.\"\"\"\n    from sklearn.metrics import silhouette_score\n\n    if len(X) < 3:\n        return 2\n\n    max_loc = min(6, len(X) - 1)\n    if max_loc < 2:\n        return 2\n\n    meilleur_score = -1\n    meilleur_k = 2\n\n    for k in range(2, max_loc + 1):\n        try:\n            clustering = AgglomerativeClustering(n_clusters=k, metric=\"cosine\", linkage=\"average\")\n            etiquettes = clustering.fit_predict(X)\n            if len(set(etiquettes)) < 2:\n                continue\n            score = silhouette_score(X, etiquettes, metric=\"cosine\")\n            if score > meilleur_score:\n                meilleur_score = score\n                meilleur_k = k\n        except Exception:\n            continue\n\n    return meilleur_k\n\n\n# ── Point d'entree autonome ──────────────────────────────────────────────────\nif __name__ == \"__main__\":\n    import sys\n    donnees = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\n    try:\n        resultat = transcrire_audio(donnees)\n        print(json.dumps(resultat, ensure_ascii=False, indent=2))\n    except Exception as e:\n        print(json.dumps({\"erreur\": str(e), \"type\": type(e).__name__}, ensure_ascii=False, indent=2))\n        sys.exit(1)\n",
+      "scriptMeta": {
+        "name": "Transcrire Audio",
+        "description": "Transcrit un fichier audio en texte via Whisper avec detection optionnelle des locuteurs par diarisation MFCC.",
+        "input": {
+          "chemin_audio": {
+            "type": "string",
+            "required": true,
+            "description": "Chemin vers le fichier WAV a transcrire"
+          },
+          "taille_modele": {
+            "type": "list",
+            "options": [
+              "tiny",
+              "base",
+              "small",
+              "medium",
+              "large"
+            ],
+            "default": "base",
+            "description": "Taille du modele Whisper"
+          },
+          "langue": {
+            "type": "list",
+            "options": [
+              "auto",
+              "fr",
+              "en",
+              "es",
+              "de",
+              "it",
+              "pt",
+              "nl",
+              "ja",
+              "zh"
+            ],
+            "default": "auto",
+            "description": "Langue de l'audio (auto = detection automatique)"
+          },
+          "detection_locuteurs": {
+            "type": "bool",
+            "default": true,
+            "description": "Activer la detection des locuteurs (diarisation)"
+          },
+          "nombre_locuteurs": {
+            "type": "int",
+            "default": 0,
+            "min": 0,
+            "max": 10,
+            "description": "Nombre de locuteurs attendus (0 = estimation automatique)"
+          }
+        },
+        "output": {
+          "segments": {
+            "type": "array",
+            "description": "Liste des segments {start, end, text, speaker}"
+          },
+          "texte_complet": {
+            "type": "string",
+            "description": "Transcription complete concatenee"
+          },
+          "langue_detectee": {
+            "type": "string",
+            "description": "Code langue detecte par Whisper"
+          },
+          "nombre_segments": {
+            "type": "int",
+            "description": "Nombre total de segments transcrits"
+          },
+          "nombre_locuteurs": {
+            "type": "int",
+            "description": "Nombre de locuteurs identifies"
+          }
+        },
+        "dependencies": [
+          "openai-whisper",
+          "torch",
+          "numpy",
+          "soundfile",
+          "librosa",
+          "scikit-learn"
+        ],
+        "raw": "\n@workflow:name: Transcrire Audio\n@workflow:description: Transcrit un fichier audio en texte via Whisper avec detection optionnelle des locuteurs par diarisation MFCC.\n@workflow:input: {\n    \"chemin_audio\":         {\"type\": \"string\",  \"required\": true,                            \"description\": \"Chemin vers le fichier WAV a transcrire\"},\n    \"taille_modele\":        {\"type\": \"list\",    \"options\": [\"tiny\", \"base\", \"small\", \"medium\", \"large\"], \"default\": \"base\", \"description\": \"Taille du modele Whisper\"},\n    \"langue\":               {\"type\": \"list\",    \"options\": [\"auto\", \"fr\", \"en\", \"es\", \"de\", \"it\", \"pt\", \"nl\", \"ja\", \"zh\"], \"default\": \"auto\", \"description\": \"Langue de l'audio (auto = detection automatique)\"},\n    \"detection_locuteurs\":  {\"type\": \"bool\",    \"default\": true,                             \"description\": \"Activer la detection des locuteurs (diarisation)\"},\n    \"nombre_locuteurs\":     {\"type\": \"int\",     \"default\": 0, \"min\": 0, \"max\": 10,          \"description\": \"Nombre de locuteurs attendus (0 = estimation automatique)\"}\n}\n@workflow:output: {\n    \"segments\":             {\"type\": \"array\",   \"description\": \"Liste des segments {start, end, text, speaker}\"},\n    \"texte_complet\":        {\"type\": \"string\",  \"description\": \"Transcription complete concatenee\"},\n    \"langue_detectee\":      {\"type\": \"string\",  \"description\": \"Code langue detecte par Whisper\"},\n    \"nombre_segments\":      {\"type\": \"int\",     \"description\": \"Nombre total de segments transcrits\"},\n    \"nombre_locuteurs\":     {\"type\": \"int\",     \"description\": \"Nombre de locuteurs identifies\"}\n}\n@workflow:dependencies: openai-whisper,torch,numpy,soundfile,librosa,scikit-learn\n"
+      },
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "node_diapos": {
+      "id": "node_diapos",
+      "type": "python",
+      "x": 500,
+      "y": -380,
+      "disabled": false,
+      "portsHidden": true,
+      "label": "Detecter Diapositives",
+      "scriptName": "detecter_diapositives.py",
+      "scriptContent": "\"\"\"\n@workflow:name: Detecter Diapositives\n@workflow:description: Detecte les changements de diapositives dans une video par comparaison d'histogrammes HSV et capture les images.\n@workflow:input: {\n    \"fichier_video\":    {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier video a analyser\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output/slides\",            \"description\": \"Dossier de destination pour les captures\"},\n    \"seuil\":            {\"type\": \"float\",   \"default\": 0.7,                          \"description\": \"Seuil de correlation (0.0 a 1.0) — plus bas = plus sensible\"}\n}\n@workflow:output: {\n    \"diapositives\":     {\"type\": \"array\",   \"description\": \"Liste des diapositives {timestamp, fichier}\"},\n    \"nombre_diapos\":    {\"type\": \"int\",     \"description\": \"Nombre de diapositives detectees\"},\n    \"duree_video\":      {\"type\": \"float\",   \"description\": \"Duree de la video en secondes\"},\n    \"dossier_captures\": {\"type\": \"string\",  \"description\": \"Chemin absolu vers le dossier des captures\"}\n}\n@workflow:dependencies: opencv-python\n\"\"\"\n# ──────────────────────────────────────────────────────────────────────────────\n#  NEXUS — Detecter Diapositives\n#\n#  Analyse une video image par image (echantillonnage 1 frame/seconde) et\n#  detecte les changements de diapositives par correlation d'histogrammes HSV.\n# ──────────────────────────────────────────────────────────────────────────────\n\nimport os\nimport json\nimport time\nfrom pathlib import Path\n\nimport cv2\n\n\ndef detecter_diapositives(params: dict) -> dict:\n    \"\"\"\n    Detecte les changements de diapositives dans une video.\n\n    Args:\n        params: Dictionnaire des parametres d'entree.\n\n    Returns:\n        Dictionnaire contenant la liste des diapositives et les metadonnees.\n    \"\"\"\n    fichier_video  = params.get(\"fichier_video\", \"\")\n    dossier_sortie = params.get(\"dossier_sortie\", \"./output/slides\")\n    seuil          = float(params.get(\"seuil\", 0.7))\n\n    if not fichier_video or not os.path.isfile(fichier_video):\n        raise FileNotFoundError(f\"Fichier video introuvable : {fichier_video}\")\n\n    Path(dossier_sortie).mkdir(parents=True, exist_ok=True)\n\n    cap = cv2.VideoCapture(fichier_video)\n    if not cap.isOpened():\n        raise RuntimeError(f\"Impossible d'ouvrir la video : {fichier_video}\")\n\n    fps = cap.get(cv2.CAP_PROP_FPS)\n    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))\n    duree_video = total_frames / fps if fps > 0 else 0\n    intervalle = max(1, int(fps))  # 1 echantillon par seconde\n\n    print(f\"[Detecter Diapositives] {duree_video:.1f}s, {fps:.0f} FPS, seuil={seuil}\")\n\n    hist_precedent = None\n    diapositives = []\n    debut = time.time()\n\n    # Capturer la premiere image\n    ret, premiere_image = cap.read()\n    if ret:\n        nom_fichier = \"diapo_000_0.00s.png\"\n        chemin_capture = os.path.join(dossier_sortie, nom_fichier)\n        cv2.imwrite(chemin_capture, premiere_image)\n        diapositives.append({\"timestamp\": 0.0, \"fichier\": nom_fichier})\n        hist_precedent = _calculer_histogramme(premiere_image)\n\n    idx_frame = intervalle\n    while True:\n        cap.set(cv2.CAP_PROP_POS_FRAMES, idx_frame)\n        ret, image = cap.read()\n        if not ret:\n            break\n\n        hist_courant = _calculer_histogramme(image)\n        correlation = cv2.compareHist(hist_precedent, hist_courant, cv2.HISTCMP_CORREL)\n\n        if correlation < seuil:\n            timestamp = idx_frame / fps\n            nom_fichier = f\"diapo_{len(diapositives):03d}_{timestamp:.2f}s.png\"\n            chemin_capture = os.path.join(dossier_sortie, nom_fichier)\n            cv2.imwrite(chemin_capture, image)\n            diapositives.append({\"timestamp\": round(timestamp, 2), \"fichier\": nom_fichier})\n\n        hist_precedent = hist_courant\n        idx_frame += intervalle\n\n    cap.release()\n    duree_traitement = time.time() - debut\n\n    print(f\"[Detecter Diapositives] {len(diapositives)} diapo(s) detectee(s) en {duree_traitement:.1f}s\")\n\n    return {\n        \"diapositives\":     diapositives,\n        \"nombre_diapos\":    len(diapositives),\n        \"duree_video\":      round(duree_video, 2),\n        \"dossier_captures\": os.path.abspath(dossier_sortie),\n    }\n\n\ndef _calculer_histogramme(image):\n    \"\"\"Calcule un histogramme HSV normalise pour la comparaison.\"\"\"\n    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)\n    hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])\n    cv2.normalize(hist, hist)\n    return hist\n\n\n# ── Point d'entree autonome ──────────────────────────────────────────────────\nif __name__ == \"__main__\":\n    import sys\n    donnees = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\n    try:\n        resultat = detecter_diapositives(donnees)\n        print(json.dumps(resultat, ensure_ascii=False, indent=2))\n    except Exception as e:\n        print(json.dumps({\"erreur\": str(e), \"type\": type(e).__name__}, ensure_ascii=False, indent=2))\n        sys.exit(1)\n",
+      "scriptMeta": {
+        "name": "Detecter Diapositives",
+        "description": "Detecte les changements de diapositives dans une video par comparaison d'histogrammes HSV et capture les images.",
+        "input": {
+          "fichier_video": {
+            "type": "string",
+            "required": true,
+            "description": "Chemin vers le fichier video a analyser"
+          },
+          "dossier_sortie": {
+            "type": "string",
+            "default": "./output/slides",
+            "description": "Dossier de destination pour les captures"
+          },
+          "seuil": {
+            "type": "float",
+            "default": 0.7,
+            "description": "Seuil de correlation (0.0 a 1.0) — plus bas = plus sensible"
+          }
+        },
+        "output": {
+          "diapositives": {
+            "type": "array",
+            "description": "Liste des diapositives {timestamp, fichier}"
+          },
+          "nombre_diapos": {
+            "type": "int",
+            "description": "Nombre de diapositives detectees"
+          },
+          "duree_video": {
+            "type": "float",
+            "description": "Duree de la video en secondes"
+          },
+          "dossier_captures": {
+            "type": "string",
+            "description": "Chemin absolu vers le dossier des captures"
+          }
+        },
+        "dependencies": [
+          "opencv-python"
+        ],
+        "raw": "\n@workflow:name: Detecter Diapositives\n@workflow:description: Detecte les changements de diapositives dans une video par comparaison d'histogrammes HSV et capture les images.\n@workflow:input: {\n    \"fichier_video\":    {\"type\": \"string\",  \"required\": true,                        \"description\": \"Chemin vers le fichier video a analyser\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output/slides\",            \"description\": \"Dossier de destination pour les captures\"},\n    \"seuil\":            {\"type\": \"float\",   \"default\": 0.7,                          \"description\": \"Seuil de correlation (0.0 a 1.0) — plus bas = plus sensible\"}\n}\n@workflow:output: {\n    \"diapositives\":     {\"type\": \"array\",   \"description\": \"Liste des diapositives {timestamp, fichier}\"},\n    \"nombre_diapos\":    {\"type\": \"int\",     \"description\": \"Nombre de diapositives detectees\"},\n    \"duree_video\":      {\"type\": \"float\",   \"description\": \"Duree de la video en secondes\"},\n    \"dossier_captures\": {\"type\": \"string\",  \"description\": \"Chemin absolu vers le dossier des captures\"}\n}\n@workflow:dependencies: opencv-python\n"
+      },
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "node_sauvegarder": {
+      "id": "node_sauvegarder",
+      "type": "python",
+      "x": 1560,
+      "y": 140,
+      "disabled": false,
+      "portsHidden": false,
+      "label": "Sauvegarder Resultats",
+      "scriptName": "sauvegarder_resultats.py",
+      "scriptContent": "\"\"\"\n@workflow:name: Sauvegarder Resultats\n@workflow:description: Genere les fichiers de sortie (SRT, TXT, JSON) a partir des segments de transcription et des diapositives detectees.\n@workflow:input: {\n    \"segments\":         {\"type\": \"array\",   \"required\": true,                        \"description\": \"Liste des segments {start, end, text, speaker}\"},\n    \"texte_complet\":    {\"type\": \"string\",  \"default\": \"\",                           \"description\": \"Texte complet de la transcription\"},\n    \"langue_detectee\":  {\"type\": \"string\",  \"default\": \"inconnu\",                    \"description\": \"Code langue detecte\"},\n    \"diapositives\":     {\"type\": \"array\",   \"default\": [],                           \"description\": \"Liste des diapositives {timestamp, fichier} (optionnel)\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination des fichiers\"},\n    \"nom_projet\":       {\"type\": \"string\",  \"default\": \"transcription\",              \"description\": \"Prefixe pour les noms de fichiers generes\"},\n    \"formats\":          {\"type\": \"list\",    \"options\": [\"srt\", \"txt\", \"json\", \"tous\"], \"default\": \"tous\", \"description\": \"Formats de sortie a generer\"}\n}\n@workflow:output: {\n    \"fichiers\":         {\"type\": \"array\",   \"description\": \"Liste des chemins de fichiers generes\"},\n    \"fichier_json\":     {\"type\": \"string\",  \"description\": \"Chemin vers le fichier JSON complet\"},\n    \"fichier_srt\":      {\"type\": \"string\",  \"description\": \"Chemin vers le fichier SRT (sous-titres)\"},\n    \"fichier_txt\":      {\"type\": \"string\",  \"description\": \"Chemin vers le fichier TXT (texte brut)\"}\n}\n@workflow:dependencies:\n\"\"\"\n# ──────────────────────────────────────────────────────────────────────────────\n#  NEXUS — Sauvegarder Resultats\n#\n#  Produit les fichiers de sortie finaux du pipeline video-vers-texte :\n#  SRT (sous-titres), TXT (texte brut par locuteur), JSON (donnees completes).\n# ──────────────────────────────────────────────────────────────────────────────\n\nimport os\nimport json\nfrom pathlib import Path\nfrom datetime import datetime\n\n\ndef sauvegarder_resultats(params: dict) -> dict:\n    \"\"\"\n    Genere les fichiers de sortie du pipeline de transcription.\n\n    Args:\n        params: Dictionnaire des parametres d'entree.\n\n    Returns:\n        Dictionnaire contenant les chemins des fichiers generes.\n    \"\"\"\n    segments        = params.get(\"segments\", [])\n    texte_complet   = params.get(\"texte_complet\", \"\")\n    langue_detectee = params.get(\"langue_detectee\", \"inconnu\")\n    diapositives    = params.get(\"diapositives\", [])\n    dossier_sortie  = params.get(\"dossier_sortie\", \"./output\")\n    nom_projet      = params.get(\"nom_projet\", \"transcription\")\n    formats         = params.get(\"formats\", \"tous\")\n\n    if not segments:\n        raise ValueError(\"Aucun segment de transcription fourni.\")\n\n    Path(dossier_sortie).mkdir(parents=True, exist_ok=True)\n\n    fichiers_generes = []\n    fichier_json = \"\"\n    fichier_srt  = \"\"\n    fichier_txt  = \"\"\n\n    generer_tous = formats == \"tous\"\n\n    # ── JSON ──────────────────────────────────────────────────────────────────\n    if generer_tous or formats == \"json\":\n        fichier_json = os.path.join(dossier_sortie, f\"{nom_projet}.json\")\n        donnees_json = {\n            \"generateur\": \"NEXUS VideoToText\",\n            \"date\":       datetime.now().isoformat(),\n            \"langue\":     langue_detectee,\n            \"texte\":      texte_complet,\n            \"segments\":   segments,\n        }\n        if diapositives:\n            donnees_json[\"diapositives\"] = diapositives\n\n        with open(fichier_json, \"w\", encoding=\"utf-8\") as f:\n            json.dump(donnees_json, f, ensure_ascii=False, indent=2)\n        fichiers_generes.append(fichier_json)\n\n    # ── SRT ───────────────────────────────────────────────────────────────────\n    if generer_tous or formats == \"srt\":\n        fichier_srt = os.path.join(dossier_sortie, f\"{nom_projet}.srt\")\n        with open(fichier_srt, \"w\", encoding=\"utf-8\") as f:\n            for i, seg in enumerate(segments, 1):\n                debut = _formater_temps_srt(seg[\"start\"])\n                fin   = _formater_temps_srt(seg[\"end\"])\n                locuteur = seg.get(\"speaker\", \"\")\n                prefixe  = f\"[{locuteur}] \" if locuteur else \"\"\n                f.write(f\"{i}\\n{debut} --> {fin}\\n{prefixe}{seg['text']}\\n\\n\")\n        fichiers_generes.append(fichier_srt)\n\n    # ── TXT ───────────────────────────────────────────────────────────────────\n    if generer_tous or formats == \"txt\":\n        fichier_txt = os.path.join(dossier_sortie, f\"{nom_projet}.txt\")\n        with open(fichier_txt, \"w\", encoding=\"utf-8\") as f:\n            f.write(f\"Transcription generee par NEXUS — {datetime.now().isoformat()}\\n\")\n            f.write(\"=\" * 60 + \"\\n\\n\")\n\n            locuteur_courant = None\n            for seg in segments:\n                locuteur = seg.get(\"speaker\", \"\")\n                if locuteur != locuteur_courant:\n                    locuteur_courant = locuteur\n                    f.write(f\"\\n[{locuteur}]\\n\")\n                f.write(f\"{seg['text']} \")\n\n            f.write(\"\\n\")\n        fichiers_generes.append(fichier_txt)\n\n    print(f\"[Sauvegarder Resultats] {len(fichiers_generes)} fichier(s) genere(s) dans {dossier_sortie}\")\n\n    return {\n        \"fichiers\":    [os.path.abspath(f) for f in fichiers_generes],\n        \"fichier_json\": os.path.abspath(fichier_json) if fichier_json else \"\",\n        \"fichier_srt\":  os.path.abspath(fichier_srt)  if fichier_srt  else \"\",\n        \"fichier_txt\":  os.path.abspath(fichier_txt)   if fichier_txt  else \"\",\n    }\n\n\ndef _formater_temps_srt(secondes: float) -> str:\n    \"\"\"Formate un nombre de secondes en format SRT HH:MM:SS,mmm.\"\"\"\n    h  = int(secondes // 3600)\n    m  = int((secondes % 3600) // 60)\n    s  = int(secondes % 60)\n    ms = int((secondes % 1) * 1000)\n    return f\"{h:02d}:{m:02d}:{s:02d},{ms:03d}\"\n\n\n# ── Point d'entree autonome ──────────────────────────────────────────────────\nif __name__ == \"__main__\":\n    import sys\n    donnees = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\n    try:\n        resultat = sauvegarder_resultats(donnees)\n        print(json.dumps(resultat, ensure_ascii=False, indent=2))\n    except Exception as e:\n        print(json.dumps({\"erreur\": str(e), \"type\": type(e).__name__}, ensure_ascii=False, indent=2))\n        sys.exit(1)\n",
+      "scriptMeta": {
+        "name": "Sauvegarder Resultats",
+        "description": "Genere les fichiers de sortie (SRT, TXT, JSON) a partir des segments de transcription et des diapositives detectees.",
+        "input": {
+          "segments": {
+            "type": "array",
+            "required": true,
+            "description": "Liste des segments {start, end, text, speaker}"
+          },
+          "texte_complet": {
+            "type": "string",
+            "default": "",
+            "description": "Texte complet de la transcription"
+          },
+          "langue_detectee": {
+            "type": "string",
+            "default": "inconnu",
+            "description": "Code langue detecte"
+          },
+          "diapositives": {
+            "type": "array",
+            "default": [],
+            "description": "Liste des diapositives {timestamp, fichier} (optionnel)"
+          },
+          "dossier_sortie": {
+            "type": "string",
+            "default": "./output",
+            "description": "Dossier de destination des fichiers"
+          },
+          "nom_projet": {
+            "type": "string",
+            "default": "transcription",
+            "description": "Prefixe pour les noms de fichiers generes"
+          },
+          "formats": {
+            "type": "list",
+            "options": [
+              "srt",
+              "txt",
+              "json",
+              "tous"
+            ],
+            "default": "tous",
+            "description": "Formats de sortie a generer"
+          }
+        },
+        "output": {
+          "fichiers": {
+            "type": "array",
+            "description": "Liste des chemins de fichiers generes"
+          },
+          "fichier_json": {
+            "type": "string",
+            "description": "Chemin vers le fichier JSON complet"
+          },
+          "fichier_srt": {
+            "type": "string",
+            "description": "Chemin vers le fichier SRT (sous-titres)"
+          },
+          "fichier_txt": {
+            "type": "string",
+            "description": "Chemin vers le fichier TXT (texte brut)"
+          }
+        },
+        "dependencies": [],
+        "raw": "\n@workflow:name: Sauvegarder Resultats\n@workflow:description: Genere les fichiers de sortie (SRT, TXT, JSON) a partir des segments de transcription et des diapositives detectees.\n@workflow:input: {\n    \"segments\":         {\"type\": \"array\",   \"required\": true,                        \"description\": \"Liste des segments {start, end, text, speaker}\"},\n    \"texte_complet\":    {\"type\": \"string\",  \"default\": \"\",                           \"description\": \"Texte complet de la transcription\"},\n    \"langue_detectee\":  {\"type\": \"string\",  \"default\": \"inconnu\",                    \"description\": \"Code langue detecte\"},\n    \"diapositives\":     {\"type\": \"array\",   \"default\": [],                           \"description\": \"Liste des diapositives {timestamp, fichier} (optionnel)\"},\n    \"dossier_sortie\":   {\"type\": \"string\",  \"default\": \"./output\",                   \"description\": \"Dossier de destination des fichiers\"},\n    \"nom_projet\":       {\"type\": \"string\",  \"default\": \"transcription\",              \"description\": \"Prefixe pour les noms de fichiers generes\"},\n    \"formats\":          {\"type\": \"list\",    \"options\": [\"srt\", \"txt\", \"json\", \"tous\"], \"default\": \"tous\", \"description\": \"Formats de sortie a generer\"}\n}\n@workflow:output: {\n    \"fichiers\":         {\"type\": \"array\",   \"description\": \"Liste des chemins de fichiers generes\"},\n    \"fichier_json\":     {\"type\": \"string\",  \"description\": \"Chemin vers le fichier JSON complet\"},\n    \"fichier_srt\":      {\"type\": \"string\",  \"description\": \"Chemin vers le fichier SRT (sous-titres)\"},\n    \"fichier_txt\":      {\"type\": \"string\",  \"description\": \"Chemin vers le fichier TXT (texte brut)\"}\n}\n@workflow:dependencies:\n"
+      },
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "ZONE DE NOTE",
+      "noteColor": "#64748b",
+      "noteBg": "rgba(100,116,139,0.18)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    },
+    "node_note": {
+      "id": "node_note",
+      "type": "note",
+      "x": -540,
+      "y": -380,
+      "disabled": false,
+      "portsHidden": true,
+      "label": "",
+      "scriptName": "",
+      "scriptContent": "",
+      "scriptMeta": null,
+      "varName": "maVariable",
+      "varType": "string",
+      "varValue": "",
+      "varDescription": "",
+      "noteTitle": "PIPELINE VIDEO-TO-TEXT",
+      "noteColor": "#7c3aed",
+      "noteBg": "rgba(124,58,237,0.12)",
+      "subflowPorts": null,
+      "subflowJSON": null,
+      "subflowStartPorts": null,
+      "subflowEndPorts": null
+    }
+  },
+  "links": [
+    {
+      "id": "jwdhsd20s",
+      "fromNode": "node_start",
+      "fromPort": "out",
+      "toNode": "node_extraire",
+      "toPort": "in_trig"
+    },
+    {
+      "id": "jay8slu9h",
+      "fromNode": "node_extraire",
+      "fromPort": "out_trig",
+      "toNode": "node_bruit",
+      "toPort": "in_trig"
+    },
+    {
+      "id": "7resd6dxb",
+      "fromNode": "node_bruit",
+      "fromPort": "out_trig",
+      "toNode": "node_volume",
+      "toPort": "in_trig"
+    },
+    {
+      "id": "48hji9m3o",
+      "fromNode": "node_volume",
+      "fromPort": "out_trig",
+      "toNode": "node_transcrire",
+      "toPort": "in_trig"
+    },
+    {
+      "id": "ibv7kt0nx",
+      "fromNode": "node_transcrire",
+      "fromPort": "out_trig",
+      "toNode": "node_sauvegarder",
+      "toPort": "in_trig"
+    },
+    {
+      "id": "o03z1je6z",
+      "fromNode": "node_extraire",
+      "fromPort": "out_trig",
+      "toNode": "node_diapos",
+      "toPort": "in_trig"
+    },
+    {
+      "id": "80i2bpzhm",
+      "fromNode": "node_extraire",
+      "fromPort": "out_data",
+      "toNode": "node_bruit",
+      "toPort": "in_data"
+    },
+    {
+      "id": "pw9wzmu0r",
+      "fromNode": "node_bruit",
+      "fromPort": "out_data",
+      "toNode": "node_volume",
+      "toPort": "in_data"
+    },
+    {
+      "id": "mc2yq3r0p",
+      "fromNode": "node_volume",
+      "fromPort": "out_data",
+      "toNode": "node_transcrire",
+      "toPort": "in_data"
+    },
+    {
+      "id": "jq351quq9",
+      "fromNode": "var_dossier",
+      "fromPort": "out_value",
+      "toNode": "node_sauvegarder",
+      "toPort": "dossier_sortie"
+    },
+    {
+      "id": "sknk6az6z",
+      "fromNode": "node_transcrire",
+      "fromPort": "out_data",
+      "toNode": "node_sauvegarder",
+      "toPort": "in_data"
+    },
+    {
+      "id": "41zr6apg1",
+      "fromNode": "var_fichier",
+      "fromPort": "out_value",
+      "toNode": "node_extraire",
+      "toPort": "fichier_source"
+    },
+    {
+      "id": "fndm4rjtz",
+      "fromNode": "var_fichier",
+      "fromPort": "out_value",
+      "toNode": "node_diapos",
+      "toPort": "fichier_video"
+    }
+  ]
+}

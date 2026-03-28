@@ -278,6 +278,26 @@ Object.assign(WorkflowEditor.prototype, {
             showVarInfoModal(id, node, () => this._notifyChange());
         });
 
+        // Boutons formulaire
+        nodeEl.querySelector('.form-eye-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._toggleFormBody(id);
+        });
+        nodeEl.querySelector('.form-edit-btn-header')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openFormModal(id);
+        });
+        nodeEl.querySelector('.form-edit-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openFormModal(id);
+        });
+        // Form name input sync
+        const formName = nodeEl.querySelector('.form-name');
+        if (formName) {
+            formName.addEventListener('input', () => { node.label = formName.value; });
+            formName.addEventListener('mousedown', (e) => e.stopPropagation());
+        }
+
         // Type selector
         const typeSelect = nodeEl.querySelector('.var-type-select');
         typeSelect?.addEventListener('change', () => {

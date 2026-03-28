@@ -170,6 +170,8 @@ Object.assign(WorkflowEditor.prototype, {
         let headerLeft;
         if (type === 'python' || type === 'process') {
             headerLeft = `<span class="font-bold text-xs tracking-wider text-white drop-shadow-md node-title-text pointer-events-none">${extraData?.scriptMeta?.name || spec.title}</span>`;
+        } else if (type === 'form') {
+            headerLeft = `<span class="font-bold text-xs tracking-wider text-white drop-shadow-md pointer-events-none">${extraData?.formData?.formTitle || extraData?.label || spec.title}</span>`;
         } else if (type === 'variable') {
             const vn = extraData?.varName || 'maVariable';
             headerLeft = `
@@ -189,6 +191,12 @@ Object.assign(WorkflowEditor.prototype, {
             ? `<button class="eye-ports-btn p-1 hover:bg-white/20 rounded transition-colors text-white/40 hover:text-white/80" data-node="${id}" title="Afficher/masquer les ports non connectés">${this._eyeOffSVG()}</button>` : '';
         const varEyeBtn = type === 'variable'
             ? `<button class="var-eye-btn p-1 hover:bg-white/20 rounded transition-colors mousedown-stop" data-node="${id}" title="Afficher/masquer les détails" style="color:rgba(255,255,255,0.85)">${this._eyeSVG()}</button>` : '';
+        const formEyeBtn = type === 'form'
+            ? `<button class="form-eye-btn p-1 hover:bg-white/20 rounded transition-colors mousedown-stop" data-node="${id}" title="Afficher/masquer les détails" style="color:rgba(255,255,255,0.85)">${this._eyeSVG()}</button>` : '';
+        const formEditBtn = type === 'form'
+            ? `<button class="form-edit-btn-header p-1 hover:bg-white/20 rounded text-white/50 hover:text-white mousedown-stop" data-node="${id}" title="Éditer le formulaire">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+               </button>` : '';
         const infoBtn = type === 'variable'
             ? `<button class="var-info-btn p-1 hover:bg-white/20 rounded text-white/50 hover:text-white mousedown-stop" title="Description de la variable">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -202,6 +210,8 @@ Object.assign(WorkflowEditor.prototype, {
             bodyHTML = this._buildPythonBody(id, extraData?.scriptMeta, extraData?.scriptName || '');
         } else if (type === 'variable') {
             bodyHTML = this._buildVariableBody(id, extraData?.varType||'string', extraData?.varValue??'', extraData?.varDescription||'');
+        } else if (type === 'form') {
+            bodyHTML = this._buildFormBody(id, extraData?.formData, extraData?.label);
         } else if (type === 'subflow') {
             bodyHTML = `
             <input type="text" class="node-input mb-2 border-orange-700 focus:border-orange-500 font-bold subflow-name"
@@ -231,7 +241,7 @@ Object.assign(WorkflowEditor.prototype, {
 
         // Résolution des ports : python/process/variable les gèrent eux-mêmes ; subflow/start/end ont des ports dynamiques
         let portIns, portOuts;
-        if (type === 'python' || type === 'process' || type === 'variable') {
+        if (type === 'python' || type === 'process' || type === 'variable' || type === 'form') {
             portIns = portOuts = null;
         } else if (type === 'subflow' && extraData?.subflowPorts) {
             portIns  = extraData.subflowPorts.inputs;
@@ -266,7 +276,7 @@ Object.assign(WorkflowEditor.prototype, {
         return `
         <div class="h-8 rounded-t-lg ${spec.headerClass} flex justify-between items-center px-3 cursor-move node-header overflow-hidden">
             ${headerLeft}
-            <div class="flex items-center gap-0.5 shrink-0">${eyeBtn}${varEyeBtn}${infoBtn}${settingsGear}</div>
+            <div class="flex items-center gap-0.5 shrink-0">${eyeBtn}${varEyeBtn}${formEyeBtn}${formEditBtn}${infoBtn}${settingsGear}</div>
         </div>
         <div class="p-3 flex flex-col gap-2 relative node-body">
             ${bodyHTML}

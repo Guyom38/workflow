@@ -62,6 +62,7 @@ body {
 .header-loop      { background: linear-gradient(90deg, #0891b2 0%, #0e7490 100%); }
 .header-variable  { background: linear-gradient(90deg, #be185d 0%, #9d174d 100%); }
 .header-process   { background: linear-gradient(90deg, #dc2626 0%, #991b1b 100%); }
+.header-form      { background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%); }
 
 /* ── Nœud rond (Boucle / forEach) ───────────────────────────────────────────── */
 .node-loop {

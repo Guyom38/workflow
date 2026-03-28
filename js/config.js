@@ -134,6 +134,20 @@ const NODE_TYPES = {
         inputs: [],
         outputs: [{ id: 'out_value', label: 'Valeur' }]
     },
+    'form': {
+        title: 'FORMULAIRE',
+        headerClass: 'header-form',
+        stripe: 'linear-gradient(to bottom, #6366f1, #4f46e5)',
+        width: 260,
+        inputs: [
+            { id: 'in_trig', label: 'Déclencheur' },
+            { id: 'in_data', label: 'IN' }
+        ],
+        outputs: [
+            { id: 'out_trig', label: 'Déclencheur' },
+            { id: 'out_data', label: 'OUT' }
+        ]
+    },
     // ── Nœuds internes aux sous-processus (non affichés dans la palette) ──────
     'subflow_start': {
         title: 'ENTRÉE',

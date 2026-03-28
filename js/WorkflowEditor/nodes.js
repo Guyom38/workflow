@@ -78,6 +78,7 @@ Object.assign(WorkflowEditor.prototype, {
             subflowJSON:       extraData?.subflowJSON        ?? null,
             subflowStartPorts: extraData?.subflowStartPorts ?? null,
             subflowEndPorts:   extraData?.subflowEndPorts   ?? null,
+            formData:          extraData?.formData           ?? null,
         };
 
         const el = document.createElement('div');

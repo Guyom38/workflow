@@ -277,6 +277,11 @@
                 <span class="palette-stripe" style="background:linear-gradient(to bottom,#be185d,#9d174d)"></span>
                 Variable
             </button>
+            <button onclick="mainEditor.addNode('form')"
+                class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-indigo-900/30 border border-slate-700 hover:border-indigo-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#6366f1,#4f46e5)"></span>
+                Formulaire
+            </button>
             <button onclick="mainEditor.addNode('note')"
                 class="palette-btn relative pl-4 pr-3 py-2 bg-slate-900/80 hover:bg-slate-700/50 border border-slate-700 hover:border-slate-500 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
                 <span class="palette-stripe" style="background:linear-gradient(to bottom,#475569,#334155)"></span>
@@ -398,6 +403,40 @@
                 <button onclick="modalEditor && modalEditor.addNode('note')"
                     class="px-3 py-2 bg-slate-900/80 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Note</button>
             </div>
+        </main>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL FORMULAIRE
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="form-modal" class="fixed inset-0 z-[100] hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8">
+    <div class="bg-[var(--bg-color)] w-full h-full rounded-xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden">
+
+        <header class="bg-slate-900 border-b border-slate-800 p-2 flex justify-between items-center z-10 shadow-md">
+            <div class="flex items-center gap-2 text-sm">
+                <button onclick="closeFormModal()" class="text-slate-400 hover:text-white transition flex items-center gap-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                    Processus Principal
+                </button>
+                <span class="text-slate-600 font-bold">›</span>
+                <span class="text-indigo-400 font-bold" id="form-breadcrumb-current">Formulaire</span>
+            </div>
+            <div class="flex gap-2 items-center">
+                <button onclick="closeFormModal()" class="text-slate-400 hover:text-red-400 transition ml-1" title="Fermer">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-hidden" id="form-editor-container">
+            <!-- FormEditor builds its UI here -->
         </main>
     </div>
 </div>
@@ -558,6 +597,8 @@
 <script src="js/WorkflowEditor/python.js"></script>
 <script src="js/WorkflowEditor/events.js"></script>
 <script src="js/WorkflowEditor/subflow.js"></script>
+<script src="js/FormEditor.js"></script>
+<script src="js/WorkflowEditor/form.js"></script>
 <script src="js/minimap.js"></script>
 <script src="js/StatusBar.js"></script>
 <script src="js/ParamModal.js"></script>
