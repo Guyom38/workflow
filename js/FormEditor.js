@@ -10,8 +10,6 @@ class FormEditor {
         label:         { label: 'Label',             icon: 'A',  color: '#64748b', hasPort: false },
         file_open:     { label: 'Ouvrir fichier',    icon: '📂', color: '#06b6d4', hasPort: true  },
         folder_open:   { label: 'Ouvrir dossier',    icon: '📁', color: '#0d9488', hasPort: true  },
-        file_save:     { label: 'Enregistrer fichier', icon: '💾', color: '#8b5cf6', hasPort: true },
-        folder_save:   { label: 'Enregistrer dossier', icon: '📁', color: '#7c3aed', hasPort: true },
     };
 
     constructor(containerId) {
@@ -46,6 +44,11 @@ class FormEditor {
                         <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${def.label}</span>
                     </button>
                 `).join('')}
+                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e293b;">
+                    <button class="form-auto-align" style="display:flex;align-items:center;gap:6px;width:100%;padding:7px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#22c55e;font-size:0.72rem;font-weight:600;cursor:pointer;transition:all 0.15s;">
+                        <span style="font-size:0.8rem;">⫸</span> Auto-aligner
+                    </button>
+                </div>
                 <div style="margin-top:auto;padding-top:12px;border-top:1px solid #1e293b;">
                     <div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;margin-bottom:6px;padding:0 4px;">Taille du formulaire</div>
                     <div style="display:flex;gap:4px;align-items:center;padding:0 4px;">
@@ -70,7 +73,6 @@ class FormEditor {
                         <div class="form-canvas-header" style="height:32px;background:linear-gradient(135deg,#6366f1,#4f46e5);display:flex;align-items:center;padding:0 12px;gap:6px;">
                             <span style="width:10px;height:10px;border-radius:50%;background:#ef4444;opacity:0.8;"></span>
                             <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;opacity:0.8;"></span>
-                            <span style="width:10px;height:10px;border-radius:50%;background:#22c55e;opacity:0.8;"></span>
                             <span class="form-canvas-title" style="flex:1;text-align:center;color:white;font-size:0.72rem;font-weight:600;letter-spacing:0.05em;">${this.formTitle}</span>
                         </div>
                         <div class="form-canvas-body" style="position:relative;height:calc(100% - 32px);"></div>
@@ -117,6 +119,9 @@ class FormEditor {
         body?.addEventListener('mousedown', (e) => {
             if (e.target === body) { this.selectedId = null; this._render(); this._renderProps(); }
         });
+
+        // Auto-align button
+        this.container.querySelector('.form-auto-align')?.addEventListener('click', () => this.autoAlign());
 
         // Global mouse move/up for dragging
         this._onMouseMove = (e) => this._handleDrag(e);
@@ -165,15 +170,13 @@ class FormEditor {
             portName: def.label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''),
         };
         switch (type) {
-            case 'text_input':  return { ...base, label: 'Champ texte', placeholder: '', maxLength: 255, defaultValue: '' };
-            case 'checkbox':    return { ...base, label: 'Option', defaultValue: false };
-            case 'select_list': return { ...base, label: 'Liste', options: ['Option 1', 'Option 2'], multiSelect: false };
-            case 'button':      return { ...base, label: 'Valider', portName: '' };
-            case 'label':       return { ...base, label: 'Texte informatif', fontSize: 12, portName: '' };
-            case 'file_open':   return { ...base, label: 'Ouvrir fichier', filters: 'Tous (*.*)', title: 'Ouvrir un fichier' };
-            case 'folder_open': return { ...base, label: 'Ouvrir dossier', title: 'Choisir un dossier' };
-            case 'file_save':   return { ...base, label: 'Enregistrer fichier', filters: 'Tous (*.*)', title: 'Enregistrer sous' };
-            case 'folder_save': return { ...base, label: 'Enregistrer dossier', title: 'Choisir un dossier de destination' };
+            case 'text_input':  return { ...base, label: 'Champ texte', placeholder: '', maxLength: 255, defaultValue: '', dataSource: false };
+            case 'checkbox':    return { ...base, label: 'Option', defaultValue: false, dataSource: false };
+            case 'select_list': return { ...base, label: 'Liste', options: ['Option 1', 'Option 2'], multiSelect: false, dataSource: false };
+            case 'button':      return { ...base, label: 'Suivant', action: 'next', portName: '' };
+            case 'label':       return { ...base, label: 'Texte informatif', fontSize: 12, dataSource: false };
+            case 'file_open':   return { ...base, label: 'Ouvrir fichier', filters: 'Tous (*.*)', title: 'Ouvrir un fichier', dataSource: false };
+            case 'folder_open': return { ...base, label: 'Ouvrir dossier', title: 'Choisir un dossier', dataSource: false };
             default: return base;
         }
     }
@@ -265,14 +268,16 @@ class FormEditor {
                         <span style="font-size:0.6rem;color:#64748b;">▼</span>
                     </div>
                 </div>`;
-            case 'button':
-                return `<div style="display:flex;align-items:center;justify-content:center;height:100%;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:6px;color:white;font-size:0.75rem;font-weight:600;letter-spacing:0.03em;box-shadow:0 2px 8px rgba(99,102,241,0.3);">${p.label}</div>`;
+            case 'button': {
+                const isQuit = p.action === 'quit';
+                const bg = isQuit ? 'linear-gradient(135deg,#dc2626,#991b1b)' : 'linear-gradient(135deg,#6366f1,#4f46e5)';
+                const shadow = isQuit ? 'rgba(220,38,38,0.3)' : 'rgba(99,102,241,0.3)';
+                return `<div style="display:flex;align-items:center;justify-content:center;height:100%;background:${bg};border-radius:6px;color:white;font-size:0.75rem;font-weight:600;letter-spacing:0.03em;box-shadow:0 2px 8px ${shadow};">${p.label}</div>`;
+            }
             case 'label':
                 return `<div style="display:flex;align-items:center;height:100%;color:#e2e8f0;font-size:${p.fontSize || 12}px;">${p.label}</div>`;
             case 'file_open':
             case 'folder_open':
-            case 'file_save':
-            case 'folder_save':
                 return `<div style="display:flex;align-items:center;gap:6px;height:100%;background:#1e293b;border:1px solid #475569;border-radius:4px;padding:0 10px;cursor:pointer;">
                     <span style="font-size:0.8rem;">${def.icon}</span>
                     <span style="font-size:0.72rem;color:#e2e8f0;">${p.label}</span>
@@ -309,10 +314,16 @@ class FormEditor {
         html += this._propRow('Largeur', 'number', el.w, 'size_w');
         html += this._propRow('Hauteur', 'number', el.h, 'size_h');
 
-        // Port name (if has port)
-        if (def.hasPort) {
+        // Port name (if has port or can be data source)
+        if (def.hasPort || el.type !== 'button') {
             html += `<div style="border-top:1px solid #1e293b;margin:8px 0;"></div>`;
             html += this._propRow('Nom du port', 'text', el.props.portName || '', 'portName');
+        }
+
+        // Data source IN port (all types except button)
+        if (el.type !== 'button') {
+            html += `<div style="border-top:1px solid #1e293b;margin:8px 0;"></div>`;
+            html += this._propCheck('Source de donnees (IN)', !!el.props.dataSource, 'dataSource');
         }
 
         // Type-specific props
@@ -335,19 +346,21 @@ class FormEditor {
                 break;
             case 'button':
                 html += this._propRow('Label', 'text', el.props.label, 'label');
+                html += this._propSelect('Action', el.props.action || 'next', 'action', [
+                    { value: 'next', label: 'Suivant (valider)' },
+                    { value: 'quit', label: 'Quitter (annuler)' },
+                ]);
                 break;
             case 'label':
                 html += this._propRow('Texte', 'text', el.props.label, 'label');
                 html += this._propRow('Taille police', 'number', el.props.fontSize, 'fontSize');
                 break;
             case 'file_open':
-            case 'file_save':
                 html += this._propRow('Label', 'text', el.props.label, 'label');
                 html += this._propRow('Filtres', 'text', el.props.filters, 'filters');
                 html += this._propRow('Titre dialogue', 'text', el.props.title, 'title');
                 break;
             case 'folder_open':
-            case 'folder_save':
                 html += this._propRow('Label', 'text', el.props.label, 'label');
                 html += this._propRow('Titre dialogue', 'text', el.props.title, 'title');
                 break;
@@ -401,6 +414,31 @@ class FormEditor {
         </div>`;
     }
 
+    _propSelect(label, value, key, options) {
+        const opts = options.map(o => `<option value="${o.value}" ${o.value === value ? 'selected' : ''}>${o.label}</option>`).join('');
+        return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="font-size:0.65rem;color:#64748b;width:70px;flex-shrink:0;">${label}</span>
+            <select class="form-prop-input" data-key="${key}"
+                style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;padding:3px 6px;font-size:0.7rem;">${opts}</select>
+        </div>`;
+    }
+
+    // ── Auto-align ──────────────────────────────────────────────────────────
+
+    autoAlign() {
+        if (!this.elements.length) return;
+        const PAD = 16, GAP = 10;
+        let cy = PAD;
+        this.elements.forEach(el => {
+            el.x = PAD;
+            el.y = cy;
+            el.w = this.formWidth - PAD * 2;
+            cy += el.h + GAP;
+        });
+        this._render();
+        this._renderProps();
+    }
+
     // ── Serialization ────────────────────────────────────────────────────────
 
     toJSON() {
@@ -413,11 +451,10 @@ class FormEditor {
     }
 
     fromJSON(data) {
-        if (!data) return;
-        this.formWidth  = data.formWidth  || 500;
-        this.formHeight = data.formHeight || 400;
-        this.formTitle  = data.formTitle  || 'Mon Formulaire';
-        this.elements   = (data.elements || []).map(el => ({ ...el, props: { ...el.props } }));
+        this.formWidth  = data?.formWidth  || 500;
+        this.formHeight = data?.formHeight || 400;
+        this.formTitle  = data?.formTitle  || 'Mon Formulaire';
+        this.elements   = (data?.elements || []).map(el => ({ ...el, props: { ...el.props } }));
         this.selectedId = null;
 
         // Update UI
@@ -448,6 +485,15 @@ class FormEditor {
             }));
     }
 
+    getInputPorts() {
+        return this.elements
+            .filter(el => el.type !== 'button' && el.props.dataSource && el.props.portName)
+            .map(el => ({
+                id: 'in_' + el.props.portName,
+                label: el.props.portName,
+            }));
+    }
+
     // ── Python export helper ─────────────────────────────────────────────────
 
     static toPythonFormCode(formData, funcName) {
@@ -457,7 +503,7 @@ class FormEditor {
         lines.push(`def ${funcName}(data: dict) -> dict:`);
         lines.push(`    """Affiche le formulaire '${formData.formTitle}' et retourne les valeurs saisies."""`);
         lines.push(`    import sys`);
-        lines.push(`    from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout,`);
+        lines.push(`    from PyQt5.QtWidgets import (QApplication, QDialog,`);
         lines.push(`        QLabel, QLineEdit, QCheckBox, QComboBox, QListWidget, QPushButton,`);
         lines.push(`        QFileDialog, QDialogButtonBox, QAbstractItemView)`);
         lines.push(`    from PyQt5.QtCore import Qt`);
@@ -466,6 +512,7 @@ class FormEditor {
         lines.push(`    _dlg = QDialog()`);
         lines.push(`    _dlg.setWindowTitle(${JSON.stringify(formData.formTitle)})`);
         lines.push(`    _dlg.setFixedSize(${formData.formWidth}, ${formData.formHeight})`);
+        lines.push(`    _dlg.setWindowFlags(_dlg.windowFlags() & ~Qt.WindowMaximizeButtonHint)`);
         lines.push(`    _dlg.setStyleSheet("QDialog{background:#1e293b;color:#e2e8f0;}"` );
         lines.push(`        "QLabel{color:#cbd5e1;}"` );
         lines.push(`        "QLineEdit{background:#0f172a;border:1px solid #475569;border-radius:4px;padding:4px 8px;color:#e2e8f0;}"` );
@@ -493,14 +540,22 @@ class FormEditor {
                     lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y + 16}, ${el.w}, ${el.h - 16})`);
                     if (p.placeholder) lines.push(`    ${varName}.setPlaceholderText(${JSON.stringify(p.placeholder)})`);
                     if (p.maxLength) lines.push(`    ${varName}.setMaxLength(${p.maxLength})`);
-                    lines.push(`    ${varName}.setText(data.get(${JSON.stringify(p.portName)}, ${JSON.stringify(p.defaultValue || '')}))`);
+                    if (p.dataSource) {
+                        lines.push(`    ${varName}.setText(str(data.get(${JSON.stringify(p.portName)}, ${JSON.stringify(p.defaultValue || '')})))`);
+                    } else {
+                        lines.push(`    ${varName}.setText(${JSON.stringify(p.defaultValue || '')})`);
+                    }
                     widgets.push({ varName, portName: p.portName, getter: `${varName}.text()` });
                     break;
 
                 case 'checkbox':
                     lines.push(`    ${varName} = QCheckBox(${JSON.stringify(p.label)}, _dlg)`);
                     lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y}, ${el.w}, ${el.h})`);
-                    lines.push(`    ${varName}.setChecked(bool(data.get(${JSON.stringify(p.portName)}, ${p.defaultValue ? 'True' : 'False'})))`);
+                    if (p.dataSource) {
+                        lines.push(`    ${varName}.setChecked(bool(data.get(${JSON.stringify(p.portName)}, ${p.defaultValue ? 'True' : 'False'})))`);
+                    } else {
+                        lines.push(`    ${varName}.setChecked(${p.defaultValue ? 'True' : 'False'})`);
+                    }
                     widgets.push({ varName, portName: p.portName, getter: `${varName}.isChecked()` });
                     break;
 
@@ -511,16 +566,26 @@ class FormEditor {
                         lines.push(`    ${varName} = QListWidget(_dlg)`);
                         lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y + 16}, ${el.w}, ${el.h - 16})`);
                         lines.push(`    ${varName}.setSelectionMode(QAbstractItemView.MultiSelection)`);
-                        (p.options || []).forEach(opt => {
-                            lines.push(`    ${varName}.addItem(${JSON.stringify(opt)})`);
-                        });
+                        if (p.dataSource) {
+                            lines.push(`    for _opt in data.get(${JSON.stringify(p.portName)}, ${JSON.stringify(p.options || [])}):`);
+                            lines.push(`        ${varName}.addItem(str(_opt))`);
+                        } else {
+                            (p.options || []).forEach(opt => {
+                                lines.push(`    ${varName}.addItem(${JSON.stringify(opt)})`);
+                            });
+                        }
                         widgets.push({ varName, portName: p.portName, getter: `[item.text() for item in ${varName}.selectedItems()]` });
                     } else {
                         lines.push(`    ${varName} = QComboBox(_dlg)`);
                         lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y + 16}, ${el.w}, ${el.h - 16})`);
-                        (p.options || []).forEach(opt => {
-                            lines.push(`    ${varName}.addItem(${JSON.stringify(opt)})`);
-                        });
+                        if (p.dataSource) {
+                            lines.push(`    for _opt in data.get(${JSON.stringify(p.portName)}, ${JSON.stringify(p.options || [])}):`);
+                            lines.push(`        ${varName}.addItem(str(_opt))`);
+                        } else {
+                            (p.options || []).forEach(opt => {
+                                lines.push(`    ${varName}.addItem(${JSON.stringify(opt)})`);
+                            });
+                        }
                         widgets.push({ varName, portName: p.portName, getter: `${varName}.currentText()` });
                     }
                     break;
@@ -528,58 +593,60 @@ class FormEditor {
                 case 'button':
                     lines.push(`    ${varName} = QPushButton(${JSON.stringify(p.label)}, _dlg)`);
                     lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y}, ${el.w}, ${el.h})`);
-                    lines.push(`    ${varName}.clicked.connect(_dlg.accept)`);
+                    if (p.action === 'quit') {
+                        lines.push(`    ${varName}.setStyleSheet("QPushButton{background:#dc2626;} QPushButton:hover{background:#991b1b;}")`);
+                        lines.push(`    ${varName}.clicked.connect(_dlg.reject)`);
+                    } else {
+                        lines.push(`    ${varName}.clicked.connect(_dlg.accept)`);
+                    }
                     break;
 
                 case 'label':
-                    lines.push(`    ${varName} = QLabel(${JSON.stringify(p.label)}, _dlg)`);
+                    if (p.dataSource && p.portName) {
+                        lines.push(`    ${varName} = QLabel(str(data.get(${JSON.stringify(p.portName)}, ${JSON.stringify(p.label)})), _dlg)`);
+                    } else {
+                        lines.push(`    ${varName} = QLabel(${JSON.stringify(p.label)}, _dlg)`);
+                    }
                     lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y}, ${el.w}, ${el.h})`);
                     if (p.fontSize) lines.push(`    ${varName}.setStyleSheet("font-size:${p.fontSize}px;")`);
                     break;
 
                 case 'file_open':
-                    lines.push(`    ${varName}_path = [data.get(${JSON.stringify(p.portName)}, "")]`);
+                    if (p.dataSource) {
+                        lines.push(`    ${varName}_path = [str(data.get(${JSON.stringify(p.portName)}, ""))]`);
+                    } else {
+                        lines.push(`    ${varName}_path = [""]`);
+                    }
                     lines.push(`    ${varName} = QPushButton(${JSON.stringify(p.label)}, _dlg)`);
                     lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y}, ${el.w}, ${el.h})`);
+                    if (p.dataSource) {
+                        lines.push(`    if ${varName}_path[0]: ${varName}.setText(${varName}_path[0].split("/")[-1] or ${varName}_path[0])`);
+                    }
                     lines.push(`    def _pick_file_${varName}():`);
-                    lines.push(`        path, _ = QFileDialog.getOpenFileName(_dlg, ${JSON.stringify(p.title || 'Ouvrir')}, "", ${JSON.stringify(p.filters || 'Tous (*.*)')})`);
+                    lines.push(`        path, _ = QFileDialog.getOpenFileName(_dlg, ${JSON.stringify(p.title || 'Ouvrir')}, ${varName}_path[0], ${JSON.stringify(p.filters || 'Tous (*.*)')})`);
                     lines.push(`        if path: ${varName}_path[0] = path; ${varName}.setText(path.split("/")[-1] or path)`);
                     lines.push(`    ${varName}.clicked.connect(_pick_file_${varName})`);
                     widgets.push({ varName, portName: p.portName, getter: `${varName}_path[0]` });
                     break;
 
                 case 'folder_open':
-                    lines.push(`    ${varName}_path = [data.get(${JSON.stringify(p.portName)}, "")]`);
+                    if (p.dataSource) {
+                        lines.push(`    ${varName}_path = [str(data.get(${JSON.stringify(p.portName)}, ""))]`);
+                    } else {
+                        lines.push(`    ${varName}_path = [""]`);
+                    }
                     lines.push(`    ${varName} = QPushButton(${JSON.stringify(p.label)}, _dlg)`);
                     lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y}, ${el.w}, ${el.h})`);
+                    if (p.dataSource) {
+                        lines.push(`    if ${varName}_path[0]: ${varName}.setText(${varName}_path[0].split("/")[-1] or ${varName}_path[0])`);
+                    }
                     lines.push(`    def _pick_folder_${varName}():`);
-                    lines.push(`        path = QFileDialog.getExistingDirectory(_dlg, ${JSON.stringify(p.title || 'Dossier')})`);
+                    lines.push(`        path = QFileDialog.getExistingDirectory(_dlg, ${JSON.stringify(p.title || 'Dossier')}, ${varName}_path[0])`);
                     lines.push(`        if path: ${varName}_path[0] = path; ${varName}.setText(path.split("/")[-1] or path)`);
                     lines.push(`    ${varName}.clicked.connect(_pick_folder_${varName})`);
                     widgets.push({ varName, portName: p.portName, getter: `${varName}_path[0]` });
                     break;
 
-                case 'file_save':
-                    lines.push(`    ${varName}_path = [data.get(${JSON.stringify(p.portName)}, "")]`);
-                    lines.push(`    ${varName} = QPushButton(${JSON.stringify(p.label)}, _dlg)`);
-                    lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y}, ${el.w}, ${el.h})`);
-                    lines.push(`    def _pick_save_${varName}():`);
-                    lines.push(`        path, _ = QFileDialog.getSaveFileName(_dlg, ${JSON.stringify(p.title || 'Enregistrer')}, "", ${JSON.stringify(p.filters || 'Tous (*.*)')})`);
-                    lines.push(`        if path: ${varName}_path[0] = path; ${varName}.setText(path.split("/")[-1] or path)`);
-                    lines.push(`    ${varName}.clicked.connect(_pick_save_${varName})`);
-                    widgets.push({ varName, portName: p.portName, getter: `${varName}_path[0]` });
-                    break;
-
-                case 'folder_save':
-                    lines.push(`    ${varName}_path = [data.get(${JSON.stringify(p.portName)}, "")]`);
-                    lines.push(`    ${varName} = QPushButton(${JSON.stringify(p.label)}, _dlg)`);
-                    lines.push(`    ${varName}.setGeometry(${el.x}, ${el.y}, ${el.w}, ${el.h})`);
-                    lines.push(`    def _pick_savedir_${varName}():`);
-                    lines.push(`        path = QFileDialog.getExistingDirectory(_dlg, ${JSON.stringify(p.title || 'Dossier')})`);
-                    lines.push(`        if path: ${varName}_path[0] = path; ${varName}.setText(path.split("/")[-1] or path)`);
-                    lines.push(`    ${varName}.clicked.connect(_pick_savedir_${varName})`);
-                    widgets.push({ varName, portName: p.portName, getter: `${varName}_path[0]` });
-                    break;
             }
             lines.push(``);
         });

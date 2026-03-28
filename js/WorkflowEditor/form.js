@@ -16,17 +16,13 @@ function openFormModal(nodeId) {
 
     modal.classList.remove('hidden');
 
-    // Create or reuse FormEditor
-    if (!formEditorInstance) {
-        formEditorInstance = new FormEditor('form-editor-container');
-    }
-
-    // Load form data if exists
-    if (node?.formData) {
-        formEditorInstance.fromJSON(node.formData);
-    } else {
-        formEditorInstance.fromJSON(null);
-    }
+    // Wait one frame so the container has computed dimensions before building UI
+    requestAnimationFrame(() => {
+        if (!formEditorInstance) {
+            formEditorInstance = new FormEditor('form-editor-container');
+        }
+        formEditorInstance.fromJSON(node?.formData || null);
+    });
 }
 
 function closeFormModal() {
@@ -62,13 +58,22 @@ Object.assign(WorkflowEditor.prototype, {
                     data-node="${id}" data-port="${p.id}" data-type="out"></div>
             </div>`).join('');
 
+        // Dynamic input ports from data sources
+        const dynInPorts = this._getFormInputPorts(formData);
+        const dynInPortsHTML = dynInPorts.map(p => `
+            <div class="flex items-center gap-1 relative" style="min-height:18px;">
+                <div class="port port-in port-param absolute" style="left:-17px;top:4px;"
+                    data-node="${id}" data-port="${p.id}" data-type="in"></div>
+                <span class="text-[0.67rem] text-cyan-300 font-mono truncate pl-1" style="max-width:80px;" title="${p.label}">${p.label}</span>
+            </div>`).join('');
+
         return `
         <div class="form-detail-area hidden">
             <input type="text" class="node-input mb-1.5 border-indigo-700 focus:border-indigo-500 font-bold form-name mousedown-stop"
                 placeholder="Nom du formulaire" value="${label || formTitle}">
-            <button class="form-edit-btn w-full bg-slate-800 hover:bg-indigo-700 border border-slate-600 rounded py-1.5 mb-1.5 text-xs font-bold transition-colors text-white shadow-sm flex items-center justify-center gap-2 mousedown-stop"
-                data-node="${id}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="form-edit-btn w-full bg-indigo-700 hover:bg-indigo-600 border border-indigo-500 rounded py-1.5 mb-1.5 text-xs font-bold transition-colors text-white shadow-sm flex items-center justify-center gap-2 mousedown-stop"
+                data-node="${id}" onclick="event.stopPropagation();openFormModal('${id}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>Editer Formulaire
@@ -99,15 +104,23 @@ Object.assign(WorkflowEditor.prototype, {
         <div class="form-compact-row flex items-center relative mt-1" style="min-height:18px;">
             <span class="form-compact text-[0.7rem] font-mono text-indigo-200/85 truncate flex-1 leading-tight">${compact}</span>
         </div>
-        ${dynPorts.length > 0 ? `
+        ${dynInPorts.length > 0 || dynPorts.length > 0 ? `
         <div class="border-t border-slate-700/40 pt-1.5 mt-1.5">
-            <div class="flex justify-end">
+            <div class="flex justify-between items-start gap-2">
+                ${dynInPorts.length > 0 ? `
+                <div class="flex flex-col gap-2 items-start">
+                    <div class="flex items-center gap-1 mb-0.5">
+                        <span class="text-[0.58rem] text-cyan-500/80 font-bold uppercase tracking-wider">sources</span>
+                    </div>
+                    ${dynInPortsHTML}
+                </div>` : '<div></div>'}
+                ${dynPorts.length > 0 ? `
                 <div class="flex flex-col gap-2 items-end">
                     <div class="flex items-center gap-1 mb-0.5 justify-end">
                         <span class="text-[0.58rem] text-indigo-500/80 font-bold uppercase tracking-wider">ports</span>
                     </div>
                     ${dynPortsHTML}
-                </div>
+                </div>` : ''}
             </div>
         </div>` : ''}`;
     },
@@ -121,6 +134,16 @@ Object.assign(WorkflowEditor.prototype, {
             })
             .map(el => ({
                 id:    'out_' + el.props.portName,
+                label: el.props.portName,
+            }));
+    },
+
+    _getFormInputPorts(formData) {
+        if (!formData?.elements) return [];
+        return formData.elements
+            .filter(el => el.type !== 'button' && el.props.dataSource && el.props.portName)
+            .map(el => ({
+                id:    'in_' + el.props.portName,
                 label: el.props.portName,
             }));
     },
