@@ -16,10 +16,13 @@ class Exporter {
         const { name = 'workflow', nodes = {}, links = [] } = workflowData;
         const ordered = Exporter._topologicalOrder(nodes, links);
 
-        // Collecte des scripts et dépendances
-        const embeddedScripts = [];
-        const allDependencies = new Set();
-        const callOrder = [];
+        // Collecte des scripts Python, des processus et des dépendances
+        const embeddedScripts  = [];
+        const embeddedProcs    = [];   // { varName, ext, b64, node, meta, nodeId }
+        const allDependencies  = new Set();
+        const pythonCallOrder  = [];
+        const processCallOrder = [];
+        let   hasProcessNodes  = false;
 
         ordered.forEach(nodeId => {
             const node = nodes[nodeId];
@@ -28,7 +31,6 @@ class Exporter {
             if (node.type === 'python' && node.scriptContent) {
                 const meta  = node.scriptMeta || {};
                 const fname = Exporter._safeFunctionName(meta.name || node.scriptName || nodeId);
-
                 embeddedScripts.push(
                     `# ${'─'.repeat(60)}\n` +
                     `# Brique : ${meta.name || node.scriptName || nodeId}\n` +
@@ -36,27 +38,22 @@ class Exporter {
                     `# ${'─'.repeat(60)}\n` +
                     node.scriptContent.trim() + '\n'
                 );
-
                 (meta.dependencies || []).forEach(d => allDependencies.add(d));
+                pythonCallOrder.push({ nodeId, fname, meta, node });
+            }
 
-                callOrder.push({ nodeId, fname, meta, node });
+            if (node.type === 'process' && node.scriptName) {
+                hasProcessNodes = true;
+                const meta    = node.scriptMeta || {};
+                const varName = 'PROC_' + Exporter._safeFunctionName(meta.name || node.scriptName || nodeId).toUpperCase();
+                const ext     = node.scriptName.split('.').pop().toLowerCase();
+                const b64     = node.scriptContent ? Exporter._toBase64(node.scriptContent) : '';
+                embeddedProcs.push({ varName, ext, b64, node, meta, nodeId });
+                processCallOrder.push({ varName, ext, meta, node, nodeId });
             }
         });
 
-        // Construction de l'orchestrateur
-        const callLines = callOrder.map(({ nodeId, fname, meta, node }) => {
-            const inParams = JSON.stringify(
-                Object.fromEntries(
-                    Object.keys(meta.input || {}).map(k => [k, `<${k}>`])
-                ), null, 4
-            ).replace(/"<(.+?)>"/g, '"<$1>"');
-
-            return (
-                `    # Nœud : ${meta.name || fname} [${nodeId}]\n` +
-                `    result_${Exporter._safeFunctionName(nodeId)} = ${fname}(${inParams})\n`
-            );
-        }).join('\n');
-
+        // ── Header ────────────────────────────────────────────────────────────
         const header = [
             `#!/usr/bin/env python`,
             `# -*- coding: utf-8 -*-`,
@@ -71,13 +68,61 @@ class Exporter {
             `import json`,
             `import sys`,
             `import os`,
+            hasProcessNodes ? `import subprocess` : '',
+            hasProcessNodes ? `import tempfile` : '',
+            hasProcessNodes ? `import base64` : '',
             ``,
-        ].join('\n');
+        ].filter(l => l !== '').join('\n');
 
+        // ── Scripts Python embarqués ──────────────────────────────────────────
         const scripts = embeddedScripts.length
-            ? `\n# ${'═'.repeat(60)}\n# SCRIPTS BRIQUES EMBARQUÉS\n# ${'═'.repeat(60)}\n\n` + embeddedScripts.join('\n\n')
-            : '\n# Aucun script Python n\'a été chargé dans les briques.\n';
+            ? `\n# ${'═'.repeat(60)}\n# SCRIPTS BRIQUES PYTHON EMBARQUÉS\n# ${'═'.repeat(60)}\n\n` + embeddedScripts.join('\n\n')
+            : '';
 
+        // ── Scripts Processus embarqués (base64) ──────────────────────────────
+        const procScripts = embeddedProcs.length
+            ? `\n# ${'═'.repeat(60)}\n# SCRIPTS PROCESSUS EMBARQUÉS (base64)\n# ${'═'.repeat(60)}\n\n` +
+              embeddedProcs.map(({ varName, b64, node }) =>
+                  `# Fichier : ${node.scriptName || 'inconnu'}\n` +
+                  `${varName} = b"${b64}"\n`
+              ).join('\n')
+            : '';
+
+        // ── Helper _nexus_call_process ────────────────────────────────────────
+        const procHelper = hasProcessNodes ? Exporter._buildProcessHelper() : '';
+
+        // ── Lignes d'appel des nœuds Python ───────────────────────────────────
+        const pythonLines = pythonCallOrder.map(({ nodeId, fname, meta }) => {
+            const inParams = JSON.stringify(
+                Object.fromEntries(Object.keys(meta.input || {}).map(k => [k, `<${k}>`])),
+                null, 4
+            ).replace(/"<(.+?)>"/g, '"<$1>"');
+            return (
+                `    # Nœud : ${meta.name || fname} [${nodeId}]\n` +
+                `    result_${Exporter._safeFunctionName(nodeId)} = ${fname}(${inParams})\n`
+            );
+        }).join('\n');
+
+        // ── Lignes d'appel des nœuds Processus ────────────────────────────────
+        const processLines = processCallOrder.map(({ varName, ext, meta, node, nodeId }) => {
+            const inputEntries = Object.entries(meta.input || {});
+            const paramLines = inputEntries.map(([k, def]) => {
+                const fallback = JSON.stringify(def.default ?? (def.type === 'bool' ? false : def.type === 'int' ? 0 : ''));
+                return `        "${k}": data.get("${k}", ${fallback}),`;
+            }).join('\n');
+            const safe = Exporter._safeFunctionName(meta.name || node.scriptName || nodeId);
+            return (
+                `    # Nœud : ${meta.name || node.scriptName || nodeId} [${nodeId}]\n` +
+                `    _params_${safe} = {\n${paramLines}\n    }\n` +
+                `    result_${safe} = _nexus_call_process(${varName}, "${ext}", _params_${safe})\n` +
+                `    data.update(result_${safe})\n`
+            );
+        }).join('\n');
+
+        const allCallLines = [pythonLines, processLines].filter(Boolean).join('\n') ||
+                             `    pass  # Aucun nœud exécutable dans ce workflow`;
+
+        // ── Orchestrateur ─────────────────────────────────────────────────────
         const orchestrator = [
             ``,
             `# ${'═'.repeat(60)}`,
@@ -88,7 +133,7 @@ class Exporter {
             `    """Exécute le workflow "${name}" dans l'ordre topologique."""`,
             `    data = input_data or {}`,
             ``,
-            callLines || `    pass  # Aucun nœud Python dans ce workflow`,
+            allCallLines,
             ``,
             `    return data`,
             ``,
@@ -107,7 +152,7 @@ class Exporter {
             `    print(json.dumps(result, ensure_ascii=False, indent=2))`,
         ].join('\n');
 
-        return header + scripts + orchestrator + '\n';
+        return header + scripts + procScripts + procHelper + orchestrator + '\n';
     }
 
     /**
@@ -225,6 +270,125 @@ class Exporter {
         // Nœuds non visités (cycles ou îlots)
         Object.keys(nodes).forEach(id => { if (!visited.has(id)) result.push(id); });
         return result;
+    }
+
+    /**
+     * Génère le corps Python de la fonction _nexus_call_process.
+     * Incluse une seule fois dans le script exporté si des nœuds process existent.
+     */
+    static _buildProcessHelper() {
+        return `
+# ${'═'.repeat(60)}
+# HELPER — Exécution de processus externes
+# Convention :
+#   .bat/.cmd → variables d'environnement NEXUS_<PARAM> (+ appel cmd /c)
+#   .ps1      → paramètres nommés PowerShell (-Param Valeur)
+#   .sh       → options longues (--param valeur)
+#   .exe      → arguments positionnels dans l'ordre du schéma
+# Sorties lues sur stdout :
+#   [NEXUS:JSON] {...}    → dict structuré (prioritaire)
+#   [NEXUS:OUTPUT] valeur → collectés dans result['result'] (liste ou scalaire)
+# ${'═'.repeat(60)}
+
+def _nexus_call_process(script_b64: bytes, script_ext: str, params: dict) -> dict:
+    import base64 as _b64
+    import json as _json
+    import os as _os
+    import subprocess as _sp
+    import tempfile as _tmp
+
+    # Décode le script depuis le base64 embarqué
+    raw = _b64.b64decode(script_b64)
+    # Encodage natif : cp1252 pour les .bat/.cmd sur Windows, utf-8 sinon
+    enc = "cp1252" if script_ext in ("bat", "cmd") else "utf-8"
+
+    with _tmp.NamedTemporaryFile(suffix="." + script_ext, delete=False, mode="wb") as f:
+        f.write(raw)
+        tmp_path = f.name
+
+    try:
+        env = _os.environ.copy()
+
+        if script_ext in ("bat", "cmd"):
+            # ── Découpage du dict en variables d'environnement NEXUS_<PARAM> ──
+            for key, val in params.items():
+                env_val = ",".join(map(str, val)) if isinstance(val, list) else str(val).lower() if isinstance(val, bool) else str(val)
+                env[f"NEXUS_{key.upper()}"] = env_val
+            cmd = ["cmd", "/c", tmp_path]
+
+        elif script_ext == "ps1":
+            # ── Découpage du dict en paramètres nommés PowerShell ──
+            ps_args = []
+            for key, val in params.items():
+                if isinstance(val, bool):
+                    ps_args += [f"-{key}", "$true" if val else "$false"]
+                elif isinstance(val, list):
+                    ps_args += [f"-{key}", ",".join(map(str, val))]
+                else:
+                    ps_args += [f"-{key}", str(val)]
+            cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", tmp_path] + ps_args
+
+        elif script_ext == "sh":
+            # ── Découpage du dict en options longues --key valeur ──
+            sh_args = []
+            for key, val in params.items():
+                if isinstance(val, bool):
+                    if val:
+                        sh_args.append(f"--{key}")
+                elif isinstance(val, list):
+                    sh_args += [f"--{key}", ",".join(map(str, val))]
+                else:
+                    sh_args += [f"--{key}", str(val)]
+            cmd = ["bash", tmp_path] + sh_args
+
+        else:
+            # ── .exe et autres : arguments positionnels dans l'ordre du schéma ──
+            cmd = [tmp_path] + [str(v) for v in params.values()]
+
+        proc = _sp.run(cmd, env=env, capture_output=True, text=True,
+                       encoding=enc, errors="replace")
+
+        # ── Parse la sortie ────────────────────────────────────────────────────
+        output       = {}
+        nexus_lines  = []
+
+        for line in proc.stdout.splitlines():
+            s = line.strip()
+            if s.startswith("[NEXUS:JSON]"):
+                try:
+                    output = _json.loads(s[len("[NEXUS:JSON]"):].strip())
+                    nexus_lines = []
+                    break
+                except Exception:
+                    pass
+            elif s.startswith("[NEXUS:OUTPUT]"):
+                nexus_lines.append(s[len("[NEXUS:OUTPUT]"):].strip())
+
+        if not output:
+            output["result"] = nexus_lines[0] if len(nexus_lines) == 1 else nexus_lines
+
+        if proc.returncode != 0 and "_error" not in output:
+            output["_error"]      = proc.stderr.strip()
+            output["_returncode"] = proc.returncode
+
+        return output
+
+    finally:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+
+`;
+    }
+
+    /** Encode une chaîne Unicode en base64 (compatible navigateur). */
+    static _toBase64(str) {
+        try {
+            return btoa(unescape(encodeURIComponent(str)));
+        } catch (e) {
+            return btoa(str);
+        }
     }
 
     static _safeFunctionName(str) {

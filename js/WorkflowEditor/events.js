@@ -152,6 +152,19 @@ Object.assign(WorkflowEditor.prototype, {
             });
         });
 
+        // ── Process ───────────────────────────────────────────────────────────
+        const btnLoadProcess   = nodeEl.querySelector('.btn-load-process');
+        const fileInputProcess = nodeEl.querySelector('.file-input-process');
+        if (btnLoadProcess && fileInputProcess) {
+            btnLoadProcess.addEventListener('mousedown', e => e.stopPropagation());
+            btnLoadProcess.addEventListener('click',     e => { e.stopPropagation(); fileInputProcess.click(); });
+            fileInputProcess.addEventListener('change',  e => {
+                const file = e.target.files[0];
+                if (file) this.loadProcessScriptForNode(id, file);
+                fileInputProcess.value = '';
+            });
+        }
+
         // ── Note ──────────────────────────────────────────────────────────────
         if (node?.type === 'note') this._attachNoteEvents(nodeEl, id);
 

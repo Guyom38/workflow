@@ -112,6 +112,20 @@ const NODE_TYPES = {
             { id: 'out_done', label: 'Terminé' }
         ]
     },
+    'process': {
+        title: 'PROCESSUS',
+        headerClass: 'header-process',
+        stripe: 'linear-gradient(to bottom, #dc2626, #991b1b)',
+        width: 290,
+        inputs: [
+            { id: 'in_trig', label: 'Déclencheur' },
+            { id: 'in_data', label: 'IN' }
+        ],
+        outputs: [
+            { id: 'out_trig', label: 'Déclencheur' },
+            { id: 'out_data', label: 'OUT' }
+        ]
+    },
     'variable': {
         title: 'VARIABLE',
         headerClass: 'header-variable',

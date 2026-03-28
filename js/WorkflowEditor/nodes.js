@@ -118,6 +118,9 @@ Object.assign(WorkflowEditor.prototype, {
         if (type === 'python' && extraData?.scriptMeta) {
             this._refreshPythonNodeUI(id, extraData.scriptMeta, extraData.scriptName || '');
         }
+        if (type === 'process' && extraData?.scriptMeta) {
+            this._refreshProcessNodeUI(id, extraData.scriptMeta, extraData.scriptName || '');
+        }
 
         this._updatePortVisibility(id);
         return id;

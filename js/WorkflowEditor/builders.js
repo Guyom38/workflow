@@ -148,7 +148,7 @@ Object.assign(WorkflowEditor.prototype, {
 
         // Titre header
         let headerLeft;
-        if (type === 'python') {
+        if (type === 'python' || type === 'process') {
             headerLeft = `<span class="font-bold text-xs tracking-wider text-white drop-shadow-md node-title-text pointer-events-none">${extraData?.scriptMeta?.name || spec.title}</span>`;
         } else if (type === 'variable') {
             const vn = extraData?.varName || 'maVariable';
@@ -165,7 +165,7 @@ Object.assign(WorkflowEditor.prototype, {
         }
 
         // Boutons droite du header
-        const eyeBtn = type === 'python'
+        const eyeBtn = (type === 'python' || type === 'process')
             ? `<button class="eye-ports-btn p-1 hover:bg-white/20 rounded transition-colors text-white/40 hover:text-white/80" data-node="${id}" title="Afficher/masquer les ports non connectés">${this._eyeOffSVG()}</button>` : '';
         const infoBtn = type === 'variable'
             ? `<button class="var-info-btn p-1 hover:bg-white/20 rounded text-white/50 hover:text-white mousedown-stop" title="Description de la variable">
@@ -174,7 +174,9 @@ Object.assign(WorkflowEditor.prototype, {
 
         // Body
         let bodyHTML = '';
-        if (type === 'python') {
+        if (type === 'process') {
+            bodyHTML = this._buildProcessBody(id, extraData?.scriptMeta, extraData?.scriptName || '');
+        } else if (type === 'python') {
             bodyHTML = this._buildPythonBody(id, extraData?.scriptMeta, extraData?.scriptName || '');
         } else if (type === 'variable') {
             bodyHTML = this._buildVariableBody(id, extraData?.varType||'string', extraData?.varValue??'', extraData?.varDescription||'');
@@ -205,9 +207,9 @@ Object.assign(WorkflowEditor.prototype, {
             </div>`;
         }
 
-        // Résolution des ports : python les gère lui-même ; subflow/start/end ont des ports dynamiques
+        // Résolution des ports : python/process les gèrent eux-mêmes ; subflow/start/end ont des ports dynamiques
         let portIns, portOuts;
-        if (type === 'python') {
+        if (type === 'python' || type === 'process') {
             portIns = portOuts = null;
         } else if (type === 'subflow' && extraData?.subflowPorts) {
             portIns  = extraData.subflowPorts.inputs;
@@ -247,6 +249,90 @@ Object.assign(WorkflowEditor.prototype, {
                 <div class="flex flex-col gap-3 items-end">${outputsHTML}</div>
             </div>
         </div>`;
+    },
+
+    // ── Process body ──────────────────────────────────────────────────────────
+
+    _buildProcessBody(id, meta, scriptName) {
+        const ext      = scriptName ? scriptName.split('.').pop().toUpperCase() : '';
+        const badge    = ext ? `<span class="shrink-0 text-[0.58rem] font-bold px-1.5 py-0.5 rounded" style="background:rgba(220,38,38,0.35);color:#fca5a5;">${ext}</span>` : '';
+        const btnLabel = scriptName ? `🖥 ${scriptName}` : '📂 Charger Processus';
+        const inParams  = Object.entries(meta?.input  || {});
+        const outParams = Object.entries(meta?.output || {});
+        const hasParams = inParams.length > 0 || outParams.length > 0;
+
+        const inRows = inParams.map(([name, def]) => {
+            const req  = def.required === true;
+            const star = req ? `<span class="shrink-0 text-red-400 font-bold leading-none" style="font-size:0.6rem;" title="Obligatoire">*</span>` : '';
+            return `<div class="flex items-center gap-1 relative" style="min-height:18px;">
+                <div class="port port-in port-param absolute" style="left:-17px;top:4px;"
+                    data-node="${id}" data-port="${name}" data-type="in" data-required="${req}"></div>
+                ${star}
+                <span class="text-[0.67rem] text-slate-300 font-mono truncate" style="max-width:68px;" title="${name}${req?' (obligatoire)':''}">${name}</span>
+                <span class="text-[0.53rem] text-slate-600 shrink-0 font-mono">${this._typeShort(def)}</span>
+            </div>`;
+        }).join('');
+
+        const outRows = outParams.map(([name, def]) => {
+            const req  = def.required === true;
+            const star = req ? `<span class="shrink-0 text-red-400 font-bold leading-none" style="font-size:0.6rem;" title="Obligatoire">*</span>` : '';
+            return `<div class="flex items-center gap-1 relative justify-end" style="min-height:18px;">
+                <span class="text-[0.53rem] text-slate-600 shrink-0 font-mono">${this._typeShort(def)}</span>
+                <span class="text-[0.67rem] text-slate-300 font-mono truncate" style="max-width:68px;" title="${name}${req?' (obligatoire)':''}">${name}</span>
+                ${star}
+                <div class="port port-out port-param absolute" style="right:-17px;top:4px;"
+                    data-node="${id}" data-port="${name}" data-type="out" data-required="${req}"></div>
+            </div>`;
+        }).join('');
+
+        const paramsSection = hasParams ? `
+            <div class="border-t border-slate-700/40 pt-1.5 mt-1.5">
+                <div class="flex justify-between items-start gap-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-1 mb-1">
+                            <span class="text-[0.58rem] text-blue-500/80 font-bold uppercase tracking-wider">params</span>
+                        </div>
+                        ${inRows || '<span class="text-[0.58rem] text-slate-700 italic">aucun</span>'}
+                    </div>
+                    <div class="flex-1 min-w-0 flex flex-col items-end">
+                        <div class="flex items-center gap-1 mb-1 justify-end">
+                            <span class="text-[0.58rem] text-teal-500/80 font-bold uppercase tracking-wider">params</span>
+                        </div>
+                        ${outRows || '<span class="text-[0.58rem] text-slate-700 italic">aucun</span>'}
+                    </div>
+                </div>
+            </div>` : `<p class="text-center text-slate-700 text-[0.62rem] italic mt-1.5 mb-0.5">Chargez un script<br>pour exposer les paramètres</p>`;
+
+        return `
+        <div class="mb-1.5">
+            <button class="btn-load-process w-full text-xs py-1.5 px-2 bg-red-900/40 hover:bg-red-800/60 border border-red-700/60 hover:border-red-500 rounded transition-colors text-red-300 flex items-center justify-center gap-1.5 font-mono" data-node="${id}">
+                <span class="btn-load-process-label truncate">${btnLabel}</span>${badge}
+            </button>
+            <input type="file" class="hidden file-input-process" accept=".bat,.cmd,.exe,.sh,.ps1" data-node="${id}">
+        </div>
+        <div class="flex justify-between items-start gap-2">
+            <div class="flex flex-col gap-2">
+                <div class="flex items-center gap-1.5 relative" style="min-height:18px;">
+                    <div class="port port-in absolute -left-5" data-node="${id}" data-port="in_trig" data-type="in"></div>
+                    <span class="text-[0.68rem] text-slate-400 pl-2">Déclencheur</span>
+                </div>
+                <div class="flex items-center gap-1.5 relative" style="min-height:18px;">
+                    <div class="port port-in absolute -left-5" data-node="${id}" data-port="in_data" data-type="in"></div>
+                    <span class="text-[0.68rem] text-slate-300 pl-2">IN</span>
+                </div>
+            </div>
+            <div class="flex flex-col gap-2 items-end">
+                <div class="flex items-center gap-1.5 relative" style="min-height:18px;">
+                    <span class="text-[0.68rem] text-slate-400 pr-2">Déclencheur</span>
+                    <div class="port port-out absolute -right-5" data-node="${id}" data-port="out_trig" data-type="out"></div>
+                </div>
+                <div class="flex items-center gap-1.5 relative" style="min-height:18px;">
+                    <span class="text-[0.68rem] text-slate-300 pr-2">OUT</span>
+                    <div class="port port-out absolute -right-5" data-node="${id}" data-port="out_data" data-type="out"></div>
+                </div>
+            </div>
+        </div>
+        ${paramsSection}`;
     },
 
     // ── Python body ───────────────────────────────────────────────────────────

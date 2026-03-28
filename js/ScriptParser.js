@@ -62,6 +62,37 @@ class ScriptParser {
             .join(', ');
     }
 
+    /**
+     * Parse le contenu d'un fichier de processus (.bat, .cmd, .ps1, .sh, .exe).
+     * @param {string} content - Contenu brut du fichier
+     * @param {string} fileName - Nom du fichier (pour détecter l'extension)
+     * @returns {{ name, description, input, output, dependencies, raw } | null}
+     */
+    static parseProcess(content, fileName) {
+        if (!content || typeof content !== 'string') return null;
+        const ext = (fileName || '').split('.').pop().toLowerCase();
+
+        let block = null;
+        if (ext === 'ps1') {
+            block = ScriptParser._extractPs1Block(content);
+        } else if (ext === 'bat' || ext === 'cmd') {
+            block = ScriptParser._extractBatBlock(content);
+        } else if (ext === 'sh') {
+            block = ScriptParser._extractShBlock(content);
+        }
+
+        if (!block) return null;
+
+        return {
+            name:         ScriptParser._extractTag(block, 'name')        || 'Processus sans nom',
+            description:  ScriptParser._extractTag(block, 'description') || '',
+            input:        ScriptParser._extractJsonTag(block, 'input')   || {},
+            output:       ScriptParser._extractJsonTag(block, 'output')  || {},
+            dependencies: ScriptParser._extractDependencies(block),
+            raw: block,
+        };
+    }
+
     // ── Méthodes privées ─────────────────────────────────────────────────────
 
     static _extractDocstring(content) {
@@ -75,21 +106,43 @@ class ScriptParser {
     }
 
     static _extractTag(docstring, tagName) {
-        // Cherche @workflow:tagName: valeur (sur une ligne)
-        const re = new RegExp(`@workflow:${tagName}:\\s*(.+)`, 'i');
+        // Cherche @workflow:tagName: valeur sur la MÊME ligne ([ \t]* évite de consommer les \n)
+        const re = new RegExp(`@workflow:${tagName}:[ \\t]*(.+)`, 'i');
         const match = docstring.match(re);
         return match ? match[1].trim() : null;
     }
 
     static _extractJsonTag(docstring, tagName) {
-        // Cherche @workflow:tagName: { ... } — peut s'étendre sur plusieurs lignes
-        const re = new RegExp(`@workflow:${tagName}:\\s*(\\{[\\s\\S]*?\\})(?=\\s*@workflow:|\\s*$)`, 'i');
-        const match = docstring.match(re);
-        if (!match) return null;
+        // Cherche @workflow:tagName: { ... } — peut s'étendre sur plusieurs lignes.
+        // On repère la position du { et on avance jusqu'au } fermant en comptant les niveaux.
+        const re = new RegExp(`@workflow:${tagName}:\\s*`, 'i');
+        const startMatch = docstring.match(re);
+        if (!startMatch) return null;
+
+        const braceStart = docstring.indexOf('{', startMatch.index + startMatch[0].length);
+        if (braceStart === -1) return null;
+
+        let depth = 0;
+        let i = braceStart;
+        let inString = false;
+        let escape = false;
+        while (i < docstring.length) {
+            const c = docstring[i];
+            if (escape)           { escape = false; }
+            else if (c === '\\' && inString) { escape = true; }
+            else if (c === '"')   { inString = !inString; }
+            else if (!inString) {
+                if (c === '{') depth++;
+                else if (c === '}') { depth--; if (depth === 0) break; }
+            }
+            i++;
+        }
+
+        const raw = docstring.slice(braceStart, i + 1);
         try {
-            return JSON.parse(match[1]);
+            return JSON.parse(raw);
         } catch (e) {
-            console.warn(`[ScriptParser] JSON invalide pour @workflow:${tagName}:`, e.message);
+            console.warn(`[ScriptParser] JSON invalide pour @workflow:${tagName}:`, e.message, '\n→', raw.substring(0, 120));
             return null;
         }
     }
@@ -98,5 +151,52 @@ class ScriptParser {
         const raw = ScriptParser._extractTag(docstring, 'dependencies');
         if (!raw) return [];
         return raw.split(',').map(d => d.trim()).filter(Boolean);
+    }
+
+    /**
+     * Extrait le bloc de métadonnées d'un fichier .bat / .cmd.
+     * Toutes les lignes de commentaires :: ou REM sont extraites (préfixe supprimé)
+     * afin de reconstituer les JSON multi-lignes correctement.
+     */
+    static _extractBatBlock(content) {
+        const lines = content.split(/\r?\n/);
+        const commentLines = lines
+            .map(l => l.trim())
+            .filter(l => /^(::|REM)(\s|$)/i.test(l))
+            .map(l => l.replace(/^(::|REM)\s*/i, ''));
+        const block = commentLines.join('\n');
+        return block.includes('@workflow:') ? block : null;
+    }
+
+    /**
+     * Extrait le bloc de métadonnées d'un fichier .ps1.
+     * Priorité au bloc <# ... #> ; sinon, toutes les lignes # sont extraites.
+     */
+    static _extractPs1Block(content) {
+        const blockMatch = content.match(/<#([\s\S]*?)#>/);
+        if (blockMatch && blockMatch[1].includes('@workflow:')) return blockMatch[1];
+        // Fallback : toutes les lignes # (sauf shebang)
+        const lines = content.split(/\r?\n/);
+        const commentLines = lines
+            .map(l => l.trim())
+            .filter(l => /^#(?!!)/.test(l))
+            .map(l => l.replace(/^#\s*/, ''));
+        const block = commentLines.join('\n');
+        return block.includes('@workflow:') ? block : null;
+    }
+
+    /**
+     * Extrait le bloc de métadonnées d'un fichier .sh.
+     * Toutes les lignes # (sauf shebang) sont extraites pour reconstituer
+     * les JSON multi-lignes.
+     */
+    static _extractShBlock(content) {
+        const lines = content.split(/\r?\n/);
+        const commentLines = lines
+            .map(l => l.trim())
+            .filter(l => /^#(?!!)/.test(l))
+            .map(l => l.replace(/^#\s*/, ''));
+        const block = commentLines.join('\n');
+        return block.includes('@workflow:') ? block : null;
     }
 }

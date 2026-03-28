@@ -8,45 +8,44 @@ NEXUS est un éditeur visuel de workflow hébergé sur OVH mutualisé. **Aucun b
 
 ## Development
 
-Modifier les fichiers source → rafraîchir le navigateur. Aucun compilateur, aucun bundler.
-
-## File Structure
-
-```
-index.html              Entrée principale (HTML + références aux scripts)
-css/style.css           Tous les styles (extrait de l'ancien modele.html + nouveaux)
-js/
-  config.js             NODE_TYPES, APP_VERSION, generateId()
-  ScriptParser.js       Parse les docstrings Python (@workflow: tags)
-  Storage.js            localStorage : autosave + workflows récents (JSON)
-  Exporter.js           Génère le script Python orchestrateur + setup.bat
-  WorkflowEditor.js     Classe principale : nœuds, liens, caméra, sérialisation
-  HardwareMonitor.js    Monitoring footer (CPU/RAM/GPU/temp simulés)
-  app.js                Initialisation, toolbar (Nouveau/Charger/Enregistrer/Exporter)
-scripts/
-  pdf_to_image.py       Exemple : PDF → images (pdf2image, Pillow)
-  transcription_ollama.py Exemple : images → texte (Ollama llava)
-  text_synthesis.py     Exemple : texte → résumé (Ollama mistral)
-  create_file.py        Exemple : résumé → fichier .md/.txt
-modele.html             Ancien prototype mono-fichier (référence, non utilisé)
-```
+Modifier les fichiers source → rafraîchir le navigateur. Aucun compilateur, aucun bundler. Tailwind CSS est chargé via CDN dans `index.html`.
 
 ## Architecture
 
 ### Flux de données principal
 `WorkflowEditor.toJSON()` → `Storage.save()` / `Exporter.toPython()` / `Exporter.toSetupBat()`
 
-### WorkflowEditor (js/WorkflowEditor.js)
-Classe centrale. Deux instances créées : `mainEditor` (workspace principal) et `modalEditor` (sous-processus).
+### Ordre de chargement des scripts (index.html)
+```
+config.js → ScriptParser.js → Storage.js → Exporter.js → modals.js
+→ WorkflowEditor/{core, nodes, links, builders, python, events, subflow}.js
+→ minimap.js → StatusBar.js → ParamModal.js → app.js
+```
 
-- `createNode(type, x, y, forcedId, extraData)` — `forcedId` est utilisé lors du rechargement depuis JSON pour préserver les IDs des liens
-- `loadScriptForNode(nodeId, file)` — lit un `.py`, appelle `ScriptParser.parse()`, met à jour `this.nodes[id].scriptMeta` et rafraîchit l'UI
-- `toJSON(name)` / `fromJSON(data)` — sérialisation complète incluant `scriptContent` embarqué
-- `setOnChange(fn)` — callback déclenché après chaque modification (utilisé pour l'autosave debounced dans `app.js`)
+### WorkflowEditor (js/WorkflowEditor/)
+La classe est découpée en sous-modules via `Object.assign` sur le prototype :
+
+- `core.js` — constructeur, historique undo/redo (50 snapshots), `_notifyChange()`
+- `nodes.js` — `createNode(type, x, y, forcedId, extraData)`, `toJSON()` / `fromJSON()`, `autoLayout()`, sélection, copier/coller/couper
+- `links.js` — création/suppression de liens, rendu SVG, mise à jour caméra/transform
+- `builders.js` — constructeurs HTML pour chaque type de nœud
+- `python.js` — `loadScriptForNode(nodeId, file)` : lit un `.py`, appelle `ScriptParser.parse()`, met à jour `node.scriptMeta` ; `loadProcessScriptForNode(nodeId, file)` : idem pour nœud `process` via `ScriptParser.parseProcess()`
+- `events.js` — drag & drop workspace/nœuds, zoom, sélection par rectangle, événements variable
+- `subflow.js` — modal sous-processus ; `modalEditor` est une seconde instance de `WorkflowEditor`
+
+Deux instances globales : `mainEditor` (workspace principal) et `modalEditor` (sous-processus).
+
+`forcedId` dans `createNode` préserve les IDs lors du rechargement JSON pour que les liens restent valides.
+
+### Types de nœuds (`config.js` → `NODE_TYPES`)
+`start`, `python`, `process`, `api`, `operator`, `timing`, `condition`, `subflow`, `note`, `loop`, `variable`, `subflow_start`, `subflow_end` (ces deux derniers sont internes aux sous-processus, non affichés dans la palette).
+
+Les nœuds `python` et `process` ont toujours `in_trig + in_data` → `out_trig + out_data`. Les nœuds `variable` ont uniquement `out_value` et stockent `varType`, `varName`, `varValue`, `varDescription`.
+
+Le nœud `process` accepte `.bat`, `.cmd`, `.exe`, `.sh`, `.ps1`. Pour les `.exe`, le contenu n'est pas parsé. Pour les autres, `ScriptParser.parseProcess(content, fileName)` extrait les tags `@workflow:` depuis les commentaires natifs de chaque format (`::`/`REM` pour .bat/.cmd, `<# #>` ou `#` pour .ps1, `#` pour .sh).
 
 ### Format de docstring Python attendu
-Les scripts briques doivent contenir en début de fichier :
-```
+```python
 """
 @workflow:name: Nom affiché dans le nœud
 @workflow:description: Description courte
@@ -55,16 +54,23 @@ Les scripts briques doivent contenir en début de fichier :
 @workflow:dependencies: package1,package2
 """
 ```
-La convention est **1 entrée JSON + 1 sortie JSON** par brique (ports `in_data` / `out_data`).
+Convention : **1 entrée JSON + 1 sortie JSON** par brique. Les types supportés dans `ParamModal` : `string`, `int` (avec `min`/`max` optionnels pour un slider), `float`, `bool`, `list` (avec `options`), `array`, `object`.
 
 ### Persistance (Storage.js)
-- `nexus_autosave` : écrasé à chaque changement (debounce 3 s) + `beforeunload`
-- `nexus_workflows` : tableau de 10 entrées max, chaque entrée contient le JSON complet incluant `scriptContent`
-- Chargement depuis fichier : `<input type="file" accept=".json">` → `Storage.fromJSONString()`
+- `nexus_autosave` : debounce 3 s après chaque `_notifyChange()` + `beforeunload` + polling 30 s
+- `nexus_workflows` : tableau de 10 entrées max, chaque entrée contient le JSON complet avec `scriptContent` embarqué
+- Chargement fichier : `<input type="file" accept=".json">` → `Storage.fromJSONString()`
 
 ### Export (Exporter.js)
-- `toPython()` : tri topologique BFS identique à `autoLayout()`, embed les `scriptContent` de chaque nœud Python, génère un `run_workflow()` appelant les fonctions dans l'ordre
-- `toSetupBat()` : collecte `scriptMeta.dependencies` de tous les nœuds, génère le script de création `.venv`
+- `toPython()` : tri topologique BFS, embed les `scriptContent` de chaque nœud Python, génère `run_workflow()`
+- `toSetupBat(deps, name)` : collecte `scriptMeta.dependencies`, génère le script de création `.venv`
+- `collectDependencies(nodes)` : helper séparé appelé depuis `app.js`
 
-### Node types et ports
-Tous les nœuds ont des ports fixes définis dans `NODE_TYPES` (`config.js`). Les nœuds `python` ont toujours `in_trig + in_data` → `out_trig + out_data`. Le contenu JSON de ces ports est décrit par le docstring, pas par les ports eux-mêmes.
+### Autres modules
+- `StatusBar.js` — compteurs nœuds/liens/scripts et indicateur sauvegarde dans le footer ; `markSaved()` / `markUnsaved()`
+- `ParamModal.js` — modal d'édition des `paramValues` d'un nœud Python (valeurs IN libres ou lecture seule si port connecté) ; instance globale `paramModal`
+- `modals.js` — `showActionModal(opts, onConfirm)` (confirmation non-bloquante) et `showVarInfoModal(nodeId, node, notifyChange)` (description variable)
+- `minimap.js` — `MiniMap` : canvas 2D représentant les nœuds à l'échelle, cliquable pour naviguer
+
+### Raccourcis clavier (`app.js`)
+`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` (undo/redo), `Ctrl+A` (tout sélectionner), `Ctrl+C/X/V` (copier/couper/coller). Le contexte actif (main ou modal) est détecté via la visibilité de `#subflow-modal`.

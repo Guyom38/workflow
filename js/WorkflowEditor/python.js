@@ -31,6 +31,56 @@ Object.assign(WorkflowEditor.prototype, {
         this._updatePortVisibility(nodeId);
     },
 
+    loadProcessScriptForNode(nodeId, file) {
+        if (!file || !this.nodes[nodeId]) return;
+        const ext = file.name.split('.').pop().toLowerCase();
+
+        // Les .exe ne sont pas lisibles en texte : on stocke juste le nom
+        if (ext === 'exe') {
+            const node = this.nodes[nodeId];
+            node.scriptName    = file.name;
+            node.scriptContent = '';
+            node.scriptMeta    = null;
+            node.label         = file.name;
+            this._refreshProcessNodeUI(nodeId, null, file.name);
+            this._notifyChange();
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target.result;
+            const meta    = ScriptParser.parseProcess(content, file.name);
+            const node    = this.nodes[nodeId];
+            node.scriptName    = file.name;
+            node.scriptContent = content;
+            node.scriptMeta    = meta;
+            node.label         = meta ? meta.name : file.name;
+            // Afficher tous les ports dès le chargement d'un script avec paramètres
+            const hasParams = meta && (
+                Object.keys(meta.input || {}).length > 0 ||
+                Object.keys(meta.output || {}).length > 0
+            );
+            if (hasParams) node.portsHidden = false;
+            this._refreshProcessNodeUI(nodeId, meta, file.name);
+            this._notifyChange();
+        };
+        reader.readAsText(file, 'utf-8');
+    },
+
+    _refreshProcessNodeUI(nodeId, meta, fileName) {
+        const el = this.nodesContainer.querySelector(`#node-${nodeId}`);
+        if (!el) return;
+        const titleEl = el.querySelector('.node-title-text');
+        if (titleEl) titleEl.textContent = meta?.name || fileName || 'PROCESSUS';
+        const bodyEl = el.querySelector('.node-body');
+        if (bodyEl) {
+            bodyEl.innerHTML = this._buildProcessBody(nodeId, meta, fileName);
+            this._attachNodeBodyEvents(el, nodeId);
+        }
+        this._updatePortVisibility(nodeId);
+    },
+
     togglePortVisibility(nodeId) {
         const node = this.nodes[nodeId];
         if (!node) return;
