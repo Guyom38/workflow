@@ -161,6 +161,49 @@ Object.assign(WorkflowEditor.prototype, {
         }
     },
 
+    // ── Multiple Variables ──────────────────────────────────────────────────
+
+    _buildMultiVarBody(id, vars, expanded) {
+        const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+        const types = ['string','int','double','boolean','list'];
+        const count = vars.length;
+        const compact = count > 0 ? `${count} variable${count > 1 ? 's' : ''}` : 'Aucune variable';
+
+        const varsHTML = vars.map((v, i) => {
+            const typeOpts = types.map(t => `<option value="${t}"${t===v.type?' selected':''}>${t}</option>`).join('');
+            return `
+            <div class="mv-row flex items-center gap-1 mb-1 relative" data-mv-idx="${i}">
+                <input type="text" class="mv-name node-input text-[0.65rem] mousedown-stop" style="width:35%;padding:2px 4px;" value="${esc(v.name)}" placeholder="nom" spellcheck="false">
+                <select class="mv-type node-input text-[0.6rem] mousedown-stop" style="width:25%;padding:2px 3px;">${typeOpts}</select>
+                <input type="text" class="mv-value node-input text-[0.65rem] mousedown-stop" style="width:30%;padding:2px 4px;" value="${esc(v.value)}" placeholder="valeur">
+                <button class="mv-remove shrink-0 w-4 h-4 flex items-center justify-center bg-red-900/50 hover:bg-red-700 border border-red-800 rounded text-red-300 text-[0.6rem] font-bold mousedown-stop leading-none">-</button>
+                ${expanded ? `<div class="port port-out port-param absolute" style="right:-21px;top:4px;" data-node="${id}" data-port="mv_${esc(v.name)}" data-type="out" title="${esc(v.name)}"></div>` : ''}
+            </div>`;
+        }).join('');
+
+        return `
+        <div class="mv-detail-area ${expanded ? '' : 'hidden'}">
+            <div class="mv-list">${varsHTML}</div>
+            <button class="mv-add mt-1 w-full py-0.5 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-slate-400 hover:text-white transition mousedown-stop">+ Ajouter variable</button>
+        </div>
+        <div class="flex items-center relative" style="min-height:18px;">
+            <span class="mv-compact text-[0.7rem] font-mono text-purple-200/85 truncate flex-1 leading-tight">${compact}</span>
+            ${!expanded ? `<div class="port port-out absolute" style="right:-17px;top:3px;" data-node="${id}" data-port="out_value" data-type="out"></div>` : ''}
+        </div>`;
+    },
+
+    _rebuildMultiVarBody(nodeId) {
+        const node = this.nodes[nodeId];
+        if (!node || node.type !== 'multivar') return;
+        const el = this.nodesContainer.querySelector(`#node-${nodeId}`);
+        if (!el) return;
+        const bodyEl = el.querySelector('.node-body');
+        if (bodyEl) {
+            bodyEl.innerHTML = this._buildMultiVarBody(nodeId, node.multiVars || [], node.multiVarsExpanded ?? false);
+            this._attachNodeBodyEvents(el, nodeId);
+        }
+    },
+
     // ── Nœud générique ────────────────────────────────────────────────────────
 
     _buildNodeHTML(id, type, spec, extraData = null) {
@@ -189,7 +232,7 @@ Object.assign(WorkflowEditor.prototype, {
         // Boutons droite du header
         const eyeBtn = (type === 'python' || type === 'process')
             ? `<button class="eye-ports-btn p-1 hover:bg-white/20 rounded transition-colors text-white/40 hover:text-white/80" data-node="${id}" title="Afficher/masquer les ports non connectés">${this._eyeOffSVG()}</button>` : '';
-        const varEyeBtn = type === 'variable'
+        const varEyeBtn = (type === 'variable' || type === 'multivar')
             ? `<button class="var-eye-btn p-1 hover:bg-white/20 rounded transition-colors mousedown-stop" data-node="${id}" title="Afficher/masquer les détails" style="color:rgba(255,255,255,0.85)">${this._eyeSVG()}</button>` : '';
         const formEyeBtn = type === 'form'
             ? `<button class="form-eye-btn p-1 hover:bg-white/20 rounded transition-colors mousedown-stop" data-node="${id}" title="Afficher/masquer les détails" style="color:rgba(255,255,255,0.85)">${this._eyeSVG()}</button>` : '';
@@ -210,6 +253,8 @@ Object.assign(WorkflowEditor.prototype, {
             bodyHTML = this._buildPythonBody(id, extraData?.scriptMeta, extraData?.scriptName || '');
         } else if (type === 'variable') {
             bodyHTML = this._buildVariableBody(id, extraData?.varType||'string', extraData?.varValue??'', extraData?.varDescription||'');
+        } else if (type === 'multivar') {
+            bodyHTML = this._buildMultiVarBody(id, extraData?.multiVars || [], extraData?.multiVarsExpanded ?? false);
         } else if (type === 'form') {
             bodyHTML = this._buildFormBody(id, extraData?.formData, extraData?.label);
         } else if (type === 'subflow') {
@@ -251,7 +296,7 @@ Object.assign(WorkflowEditor.prototype, {
 
         // Résolution des ports : python/process/variable les gèrent eux-mêmes ; subflow/start/end ont des ports dynamiques
         let portIns, portOuts;
-        if (type === 'python' || type === 'process' || type === 'variable' || type === 'form') {
+        if (type === 'python' || type === 'process' || type === 'variable' || type === 'multivar' || type === 'form') {
             portIns = portOuts = null;
         } else if (type === 'subflow' && extraData?.subflowPorts) {
             portIns  = extraData.subflowPorts.inputs;

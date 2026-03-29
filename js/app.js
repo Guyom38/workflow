@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mainEditor.setOnChange(() => {
         statusBar.markUnsaved();
         scheduleAutosave();
+        _clearVerifyBadges();
     });
 
     // Restaure l'autosave si disponible
@@ -175,9 +176,53 @@ function loadWorkflow(data) {
 
 // ── Vérification ─────────────────────────────────────────────────────────────
 
+function _clearVerifyBadges() {
+    document.querySelectorAll('.nexus-warning-badge, .nexus-warning-tooltip').forEach(e => e.remove());
+}
+
+function _placeVerifyBadges(errors) {
+    _clearVerifyBadges();
+    // Group errors by nodeId
+    const byNode = {};
+    errors.forEach(e => {
+        if (!e.nodeId) return;
+        (byNode[e.nodeId] = byNode[e.nodeId] || []).push(e);
+    });
+
+    const levelPriority = { error: 0, warning: 1, info: 2 };
+    const svgByLevel = {
+        error:   `<svg width="22" height="22" viewBox="0 0 24 24" fill="#ef4444" stroke="#7f1d1d" stroke-width="1"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text x="12" y="17" text-anchor="middle" fill="white" font-size="11" font-weight="bold" stroke="none">!</text></svg>`,
+        warning: `<svg width="22" height="22" viewBox="0 0 24 24" fill="#f59e0b" stroke="#78350f" stroke-width="1"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text x="12" y="17" text-anchor="middle" fill="white" font-size="11" font-weight="bold" stroke="none">!</text></svg>`,
+        info:    `<svg width="22" height="22" viewBox="0 0 24 24" fill="#3b82f6" stroke="#1e3a8a" stroke-width="1"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold" stroke="none">i</text></svg>`,
+    };
+
+    Object.entries(byNode).forEach(([nodeId, nodeErrors]) => {
+        const nodeEl = mainEditor.nodesContainer.querySelector(`#node-${nodeId}`);
+        if (!nodeEl) return;
+
+        // Highest severity
+        const topLevel = nodeErrors.sort((a, b) => levelPriority[a.level] - levelPriority[b.level])[0].level;
+        const messages = nodeErrors.map(e => e.message).join('\n');
+
+        const badge = document.createElement('div');
+        badge.className = `nexus-warning-badge level-${topLevel}`;
+        badge.innerHTML = svgByLevel[topLevel];
+
+        const tooltip = document.createElement('div');
+        tooltip.className = `nexus-warning-tooltip level-${topLevel}`;
+        tooltip.textContent = messages;
+
+        nodeEl.appendChild(badge);
+        nodeEl.appendChild(tooltip);
+    });
+}
+
 function verifyWorkflow() {
     const data       = mainEditor.toJSON(currentWorkflowName);
     const validation = Exporter.validate(data);
+
+    // Place badges on nodes
+    _placeVerifyBadges(validation.errors);
 
     const modal    = document.getElementById('verify-modal');
     const iconEl   = document.getElementById('vm-status-icon');

@@ -148,6 +148,14 @@ const NODE_TYPES = {
             { id: 'out_data', label: 'OUT' }
         ]
     },
+    'multivar': {
+        title: 'MULTI-VARIABLES',
+        headerClass: 'header-multivar',
+        stripe: 'linear-gradient(to bottom, #a21caf, #86198f)',
+        width: 260,
+        inputs: [],
+        outputs: [{ id: 'out_value', label: 'Valeurs' }]
+    },
     // ── Nœuds internes aux sous-processus (non affichés dans la palette) ──────
     'subflow_start': {
         title: 'ENTRÉE',

@@ -171,6 +171,9 @@ Object.assign(WorkflowEditor.prototype, {
         // ── Variable ──────────────────────────────────────────────────────────
         if (node?.type === 'variable') this._attachVariableEvents(nodeEl, id);
 
+        // ── Multiple Variables ───────────────────────────────────────────────
+        if (node?.type === 'multivar') this._attachMultiVarEvents(nodeEl, id);
+
         // ── Timing / Operator / Condition ────────────────────────────────────
         const timingInput = nodeEl.querySelector('.timing-delay-input');
         if (timingInput) {
@@ -439,6 +442,66 @@ Object.assign(WorkflowEditor.prototype, {
             });
             saveList();
         });
+    },
+
+    // ── Multiple Variables ──────────────────────────────────────────────────
+
+    _attachMultiVarEvents(nodeEl, id) {
+        const node = this.nodes[id];
+
+        // Eye toggle — expand/collapse + switch port mode
+        nodeEl.querySelector('.var-eye-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            node.multiVarsExpanded = !node.multiVarsExpanded;
+            this._rebuildMultiVarBody(id);
+            this.renderLinks();
+            this._notifyChange();
+        });
+
+        // Add variable
+        nodeEl.querySelector('.mv-add')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!node.multiVars) node.multiVars = [];
+            node.multiVars.push({ name: `var${node.multiVars.length + 1}`, type: 'string', value: '' });
+            this._rebuildMultiVarBody(id);
+            this._notifyChange();
+        });
+
+        // Per-row events (delegated)
+        nodeEl.querySelectorAll('.mv-row').forEach((row, idx) => {
+            const nameInput  = row.querySelector('.mv-name');
+            const typeSelect = row.querySelector('.mv-type');
+            const valInput   = row.querySelector('.mv-value');
+            const removeBtn  = row.querySelector('.mv-remove');
+
+            nameInput?.addEventListener('input', () => {
+                node.multiVars[idx].name = nameInput.value || `var${idx+1}`;
+                this._updateMultiVarCompact(id);
+                this._notifyChange();
+            });
+            typeSelect?.addEventListener('change', () => {
+                node.multiVars[idx].type = typeSelect.value;
+                this._notifyChange();
+            });
+            valInput?.addEventListener('input', () => {
+                node.multiVars[idx].value = valInput.value;
+                this._notifyChange();
+            });
+            removeBtn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                node.multiVars.splice(idx, 1);
+                this._rebuildMultiVarBody(id);
+                this._notifyChange();
+            });
+        });
+    },
+
+    _updateMultiVarCompact(nodeId) {
+        const node = this.nodes[nodeId];
+        if (!node) return;
+        const el = this.nodesContainer.querySelector(`#node-${nodeId} .mv-compact`);
+        const count = (node.multiVars || []).length;
+        if (el) el.textContent = count > 0 ? `${count} variable${count > 1 ? 's' : ''}` : 'Aucune variable';
     },
 
     // ── Info nœud ─────────────────────────────────────────────────────────────

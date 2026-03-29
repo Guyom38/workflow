@@ -193,7 +193,7 @@ class Exporter {
         const ordered = Exporter._topologicalOrder(nodes, links);
         const levels  = Exporter._computeLevels(nodes, links);
 
-        const EXEC_TYPES = new Set(['python', 'process', 'variable', 'subflow', 'form', 'api', 'operator', 'timing', 'condition', 'loop']);
+        const EXEC_TYPES = new Set(['python', 'process', 'variable', 'multivar', 'subflow', 'form', 'api', 'operator', 'timing', 'condition', 'loop']);
         const execNodes  = ordered.filter(id => nodes[id] && EXEC_TYPES.has(nodes[id].type));
 
         // ── Collecte des scripts, processus, dépendances ──────────────────────
@@ -252,6 +252,10 @@ class Exporter {
 
             else if (node.type === 'variable') {
                 nodeInfo[nodeId] = { kind: 'variable', node, safe };
+            }
+
+            else if (node.type === 'multivar') {
+                nodeInfo[nodeId] = { kind: 'multivar', node, safe };
             }
 
             else if (node.type === 'subflow') {
@@ -808,6 +812,24 @@ class NexusMonitor:
                 break;
             }
 
+            case 'multivar': {
+                const mvVars = node.multiVars || [];
+                if (mvVars.length === 0) {
+                    innerBody = `        _result = {}`;
+                } else {
+                    const pairs = mvVars.map(v => {
+                        let val = v.value ?? '';
+                        if (v.type === 'int') val = parseInt(val, 10) || 0;
+                        else if (v.type === 'double') val = parseFloat(val) || 0;
+                        else if (v.type === 'boolean') val = val === 'true' || val === true;
+                        else if (v.type === 'list') val = typeof val === 'string' ? val.split(',').map(s => s.trim()).filter(Boolean) : val;
+                        return `            ${JSON.stringify(v.name || 'var')}: ${JSON.stringify(val)},`;
+                    }).join('\n');
+                    innerBody = `        _result = {\n${pairs}\n        }`;
+                }
+                break;
+            }
+
             case 'subflow':
                 if (node.subflowJSON) {
                     innerBody = `        _result = run_subflow_${info.sfSafe || safe}(dict(data))`;
@@ -927,7 +949,7 @@ class NexusMonitor:
 
         const sfOrdered = Exporter._topologicalOrder(sfNodes, sfLinks);
         const sfLevels  = Exporter._computeLevels(sfNodes, sfLinks);
-        const EXEC_TYPES = new Set(['python', 'process', 'variable', 'form', 'api', 'operator', 'timing', 'condition', 'loop']);
+        const EXEC_TYPES = new Set(['python', 'process', 'variable', 'multivar', 'form', 'api', 'operator', 'timing', 'condition', 'loop']);
         const sfExec = sfOrdered.filter(id => sfNodes[id] && EXEC_TYPES.has(sfNodes[id].type));
 
         const lines = [`\ndef run_subflow_${safeName}(data: dict) -> dict:`];

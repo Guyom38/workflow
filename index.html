@@ -251,6 +251,11 @@
                 <span class="palette-stripe" style="background:linear-gradient(to bottom,#be185d,#9d174d)"></span>
                 Variable
             </button>
+            <button onclick="mainEditor.addNode('multivar')"
+                class="palette-btn relative pl-4 pr-3 py-1.5 bg-slate-900/80 hover:bg-fuchsia-900/30 border border-slate-700 hover:border-fuchsia-700 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
+                <span class="palette-stripe" style="background:linear-gradient(to bottom,#a21caf,#86198f)"></span>
+                Multi-Variables
+            </button>
             <button onclick="mainEditor.addNode('note')"
                 class="palette-btn relative pl-4 pr-3 py-1.5 bg-slate-900/80 hover:bg-slate-700/50 border border-slate-700 hover:border-slate-500 rounded-lg text-sm text-slate-300 hover:text-white transition-all text-left backdrop-blur-md shadow-lg overflow-hidden">
                 <span class="palette-stripe" style="background:linear-gradient(to bottom,#475569,#334155)"></span>
@@ -424,6 +429,8 @@
                     class="px-3 py-2 bg-slate-900/80 hover:bg-cyan-900/80 border border-slate-700 hover:border-cyan-600 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Boucle</button>
                 <button onclick="modalEditor && modalEditor.addNode('variable')"
                     class="px-3 py-2 bg-slate-900/80 hover:bg-pink-900/80 border border-slate-700 hover:border-pink-700 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Variable</button>
+                <button onclick="modalEditor && modalEditor.addNode('multivar')"
+                    class="px-3 py-2 bg-slate-900/80 hover:bg-fuchsia-900/80 border border-slate-700 hover:border-fuchsia-700 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Multi-Var</button>
                 <button onclick="modalEditor && modalEditor.addNode('note')"
                     class="px-3 py-2 bg-slate-900/80 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm text-slate-300 transition-all backdrop-blur-md shadow-lg">Note</button>
             </div>

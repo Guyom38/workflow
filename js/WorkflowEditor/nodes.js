@@ -83,6 +83,8 @@ Object.assign(WorkflowEditor.prototype, {
             delay:             extraData?.delay              ?? 1000,
             operatorOp:        extraData?.operatorOp         ?? 'add',
             conditionExpr:     extraData?.conditionExpr      ?? '',
+            multiVars:         extraData?.multiVars          ?? [],
+            multiVarsExpanded: extraData?.multiVarsExpanded  ?? false,
         };
 
         const el = document.createElement('div');
@@ -206,19 +208,34 @@ Object.assign(WorkflowEditor.prototype, {
 
     autoLayout() {
         const nodes = this.nodes, links = this.links;
+        const snap = this.snapSize || 20;      // grid quantum
+        const GAP  = snap * 4;                 // 4-cell minimum gap (80px)
+
+        // Helper: node dimensions
+        const nW = (id) => {
+            const t = nodes[id]?.type;
+            return (NODE_TYPES[t]?.width || 220);
+        };
+        const nH = (id) => {
+            const el = this.nodesContainer.querySelector(`#node-${id}`);
+            return el ? el.offsetHeight : 100;
+        };
 
         // ── 1. Classify nodes ───────────────────────────────────────────
-        const varIds  = new Set(), noteIds = new Set(), regIds = new Set();
+        const varIds = new Set(), multiVarIds = new Set(), noteIds = new Set(), regIds = new Set();
         Object.keys(nodes).forEach(id => {
-            if      (nodes[id].type === 'variable') varIds.add(id);
-            else if (nodes[id].type === 'note')     noteIds.add(id);
-            else                                     regIds.add(id);
+            const t = nodes[id].type;
+            if      (t === 'variable')  varIds.add(id);
+            else if (t === 'multivar')  multiVarIds.add(id);
+            else if (t === 'note')      noteIds.add(id);
+            else                         regIds.add(id);
         });
+        const allVarIds = new Set([...varIds, ...multiVarIds]);
 
-        // Track where each variable connects to
-        const varTarget = new Map(); // varId → { node, port }
+        // Track variable → target connections
+        const varTarget = new Map();
         links.forEach(l => {
-            if (varIds.has(l.fromNode) && !varIds.has(l.toNode) && !noteIds.has(l.toNode))
+            if (allVarIds.has(l.fromNode) && !allVarIds.has(l.toNode) && !noteIds.has(l.toNode))
                 varTarget.set(l.fromNode, { node: l.toNode, port: l.toPort });
         });
 
@@ -227,7 +244,8 @@ Object.assign(WorkflowEditor.prototype, {
         regIds.forEach(id => { adj[id] = []; deg[id] = 0; });
         links.forEach(l => {
             if (regIds.has(l.fromNode) && regIds.has(l.toNode)) {
-                adj[l.fromNode].push(l.toNode); deg[l.toNode]++;
+                adj[l.fromNode].push(l.toNode);
+                deg[l.toNode]++;
             }
         });
 
@@ -235,100 +253,245 @@ Object.assign(WorkflowEditor.prototype, {
         let cur = [...regIds].filter(id => deg[id] === 0);
         const visited = new Set(cur);
         while (cur.length) {
-            layers.push(cur);
+            layers.push([...cur]);
             const next = [];
-            cur.forEach(nid => adj[nid].forEach(tid => {
+            cur.forEach(nid => (adj[nid] || []).forEach(tid => {
                 deg[tid]--;
                 if (deg[tid] <= 0 && !visited.has(tid)) { visited.add(tid); next.push(tid); }
             }));
             cur = next;
         }
+        // Nodes caught in cycles
         const leftover = [...regIds].filter(id => !visited.has(id));
         if (leftover.length) layers.push(leftover);
+
+        // If no regular nodes, still need positions for vars/notes
+        if (!layers.length && !allVarIds.size && !noteIds.size) return;
 
         // Layer index per node
         const layerOf = {};
         layers.forEach((L, li) => L.forEach(id => { layerOf[id] = li; }));
 
-        // ── 3. Minimize crossings (barycenter heuristic, 2 passes) ──────
-        for (let pass = 0; pass < 2; pass++) {
+        // ── 3. Crossing minimization — 6-pass barycenter ────────────────
+        for (let pass = 0; pass < 6; pass++) {
+            // Forward
             for (let li = 1; li < layers.length; li++) {
-                const prev = layers[li - 1];
                 const posOf = {};
-                prev.forEach((id, idx) => { posOf[id] = idx; });
+                layers[li - 1].forEach((id, idx) => { posOf[id] = idx; });
                 const bary = {};
                 layers[li].forEach(nid => {
-                    const preds = [];
+                    const vals = [];
                     links.forEach(l => {
                         if (l.toNode === nid && layerOf[l.fromNode] === li - 1 && posOf[l.fromNode] !== undefined)
-                            preds.push(posOf[l.fromNode]);
+                            vals.push(posOf[l.fromNode]);
+                        if (l.fromNode === nid && layerOf[l.toNode] === li - 1 && posOf[l.toNode] !== undefined)
+                            vals.push(posOf[l.toNode]);
                     });
-                    bary[nid] = preds.length ? preds.reduce((a,b)=>a+b,0) / preds.length : Infinity;
+                    bary[nid] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : Infinity;
                 });
-                layers[li].sort((a,b) => bary[a] - bary[b]);
+                layers[li].sort((a, b) => bary[a] - bary[b]);
             }
-            // Backward pass
+            // Backward
             for (let li = layers.length - 2; li >= 0; li--) {
-                const nextL = layers[li + 1];
                 const posOf = {};
-                nextL.forEach((id, idx) => { posOf[id] = idx; });
+                layers[li + 1].forEach((id, idx) => { posOf[id] = idx; });
                 const bary = {};
                 layers[li].forEach(nid => {
-                    const succs = [];
+                    const vals = [];
                     links.forEach(l => {
                         if (l.fromNode === nid && layerOf[l.toNode] === li + 1 && posOf[l.toNode] !== undefined)
-                            succs.push(posOf[l.toNode]);
+                            vals.push(posOf[l.toNode]);
+                        if (l.toNode === nid && layerOf[l.fromNode] === li + 1 && posOf[l.fromNode] !== undefined)
+                            vals.push(posOf[l.fromNode]);
                     });
-                    bary[nid] = succs.length ? succs.reduce((a,b)=>a+b,0) / succs.length : Infinity;
+                    bary[nid] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : Infinity;
                 });
-                layers[li].sort((a,b) => bary[a] - bary[b]);
+                layers[li].sort((a, b) => bary[a] - bary[b]);
             }
         }
 
-        // ── 4. Position regular nodes — wide layout ─────────────────────
-        const marginX = 340, marginY = 130;
-        const centerX = -this.camera.x / this.camera.zoom + (this.workspace.clientWidth  / 2) / this.camera.zoom;
-        const centerY = -this.camera.y / this.camera.zoom + (this.workspace.clientHeight / 2) / this.camera.zoom;
-        const startX  = centerX - (Math.max(0, layers.length - 1) * marginX / 2);
+        // ── 4. Compute per-layer X with variable column width ───────────
+        const viewCx = -this.camera.x / this.camera.zoom + (this.workspace.clientWidth  / 2) / this.camera.zoom;
+        const viewCy = -this.camera.y / this.camera.zoom + (this.workspace.clientHeight / 2) / this.camera.zoom;
 
-        const pos = {};
-        layers.forEach((L, li) => {
-            const x  = startX + li * marginX;
-            let cy = centerY - (Math.max(0, L.length - 1) * marginY / 2);
-            L.forEach(nid => { pos[nid] = { x, y: cy }; cy += marginY; });
-        });
-
-        // ── 5. Place variable nodes close to their target IN port ───────
-        const varPerTarget = new Map(); // targetNodeId → count (for stacking)
-        varIds.forEach(vid => {
-            const tgt = varTarget.get(vid);
-            if (tgt && pos[tgt.node]) {
-                const tp = pos[tgt.node];
-                const cnt = varPerTarget.get(tgt.node) || 0;
-                varPerTarget.set(tgt.node, cnt + 1);
-                const varW = NODE_TYPES['variable']?.width || 220;
-                pos[vid] = {
-                    x: tp.x - varW - 50,
-                    y: tp.y - 20 + cnt * 80,
-                };
-            } else {
-                // Disconnected variable — put at bottom
-                pos[vid] = { x: startX - 300, y: centerY + [...varIds].indexOf(vid) * 90 };
+        // Compute max width per layer for variable spacing
+        const layerMaxW = layers.map(L => Math.max(...L.map(id => nW(id))));
+        const layerX = [];
+        let xCursor = 0;
+        for (let li = 0; li < layers.length; li++) {
+            layerX.push(xCursor);
+            // Gap to next layer = max(GAP, half-width-current + half-width-next + GAP)
+            if (li < layers.length - 1) {
+                const gapNeeded = layerMaxW[li] / 2 + layerMaxW[li + 1] / 2 + GAP * 2;
+                xCursor += Math.max(gapNeeded, 400);
             }
+        }
+        // Center around view
+        const totalW = xCursor;
+        const offsetX = viewCx - totalW / 2;
+
+        // ── 5. Position regular nodes with generous vertical spacing ────
+        const pos = {};
+
+        layers.forEach((L, li) => {
+            const x = layerX[li] + offsetX;
+            // Compute real heights for vertical spacing
+            const heights = L.map(id => nH(id));
+            const totalH = heights.reduce((s, h) => s + h, 0) + (L.length - 1) * GAP;
+            let yCursor = viewCy - totalH / 2;
+            L.forEach((nid, idx) => {
+                pos[nid] = { x, y: yCursor };
+                yCursor += heights[idx] + GAP;
+            });
         });
 
-        // ── 6. Resolve variable-variable overlaps ───────────────────────
-        const varArr = [...varIds].filter(id => pos[id]);
-        for (let i = 0; i < varArr.length; i++) {
-            for (let j = i + 1; j < varArr.length; j++) {
-                const a = pos[varArr[i]], b = pos[varArr[j]];
-                if (Math.abs(a.x - b.x) < 200 && Math.abs(a.y - b.y) < 70) {
-                    b.y = a.y + 80;
+        // ── 6. Place variable/multivar nodes close to target ────────────
+        // Group variables by their target node
+        const varsByTarget = new Map();
+        allVarIds.forEach(vid => {
+            const tgt = varTarget.get(vid);
+            const key = tgt && pos[tgt.node] ? tgt.node : '__disconnected__';
+            if (!varsByTarget.has(key)) varsByTarget.set(key, []);
+            varsByTarget.get(key).push(vid);
+        });
+
+        varsByTarget.forEach((vids, targetId) => {
+            if (targetId === '__disconnected__') {
+                // Place disconnected variables in a column to the left
+                const x = (layerX[0] || 0) + offsetX - 300;
+                let y = viewCy - (vids.length - 1) * (GAP + 40) / 2;
+                vids.forEach(vid => {
+                    pos[vid] = { x, y };
+                    y += nH(vid) + GAP;
+                });
+                return;
+            }
+
+            const tp = pos[targetId];
+            if (!tp) return;
+            const varW = Math.max(...vids.map(v => nW(v)));
+            const baseX = tp.x - varW - GAP * 1.5;
+
+            // Find the port index for each variable to sort them vertically to match port order
+            const portOrder = {};
+            const targetEl = this.nodesContainer.querySelector(`#node-${targetId}`);
+            if (targetEl) {
+                const ports = targetEl.querySelectorAll('.port.port-in');
+                ports.forEach((p, idx) => { portOrder[p.dataset.portId] = idx; });
+            }
+            vids.sort((a, b) => {
+                const pa = varTarget.get(a)?.port, pb = varTarget.get(b)?.port;
+                return (portOrder[pa] ?? 999) - (portOrder[pb] ?? 999);
+            });
+
+            // Center the variable stack around the target's Y center
+            const tgtH = nH(targetId);
+            const varHeights = vids.map(v => nH(v));
+            const totalVarH = varHeights.reduce((s, h) => s + h, 0) + (vids.length - 1) * Math.min(GAP, 40);
+            let yCursor = tp.y + tgtH / 2 - totalVarH / 2;
+
+            vids.forEach((vid, idx) => {
+                pos[vid] = { x: baseX, y: yCursor };
+                yCursor += varHeights[idx] + Math.min(GAP, 40);
+            });
+        });
+
+        // ── 7. Resolve overlaps among all placed nodes ──────────────────
+        const allPlaced = Object.keys(pos);
+        for (let iter = 0; iter < 5; iter++) {
+            let moved = false;
+            for (let i = 0; i < allPlaced.length; i++) {
+                for (let j = i + 1; j < allPlaced.length; j++) {
+                    const a = allPlaced[i], b = allPlaced[j];
+                    const ax = pos[a].x, ay = pos[a].y;
+                    const bx = pos[b].x, by = pos[b].y;
+                    const aw = nW(a), bw = nW(b);
+                    const ah = nH(a), bh = nH(b);
+
+                    // Check overlap with GAP margin
+                    const overlapX = (ax + aw + GAP) > bx && (bx + bw + GAP) > ax;
+                    const overlapY = (ay + ah + GAP) > by && (by + bh + GAP) > ay;
+
+                    if (overlapX && overlapY) {
+                        // Push apart vertically
+                        const midY = (ay + ah / 2 + by + bh / 2) / 2;
+                        const needH = (ah + bh) / 2 + GAP;
+                        if (ay <= by) {
+                            pos[a].y = midY - needH;
+                            pos[b].y = midY + GAP / 2;
+                        } else {
+                            pos[b].y = midY - needH;
+                            pos[a].y = midY + GAP / 2;
+                        }
+                        moved = true;
+                    }
                 }
             }
+            if (!moved) break;
         }
 
-        // ── 7. Apply positions with animation ───────────────────────────
+        // ── 8. Place note nodes near their closest brick ────────────────
+        noteIds.forEach(nid => {
+            // Find nearest brick by link or by proximity
+            let bestId = null, bestDist = Infinity;
+
+            // Check links first
+            links.forEach(l => {
+                const other = l.fromNode === nid ? l.toNode : (l.toNode === nid ? l.fromNode : null);
+                if (other && pos[other]) {
+                    bestId = other;
+                    bestDist = 0;
+                }
+            });
+
+            // If no linked brick, find nearest by original position
+            if (!bestId) {
+                const origX = nodes[nid].x, origY = nodes[nid].y;
+                Object.keys(pos).forEach(oid => {
+                    if (oid === nid) return;
+                    const d = Math.hypot(pos[oid].x - origX, pos[oid].y - origY);
+                    if (d < bestDist) { bestDist = d; bestId = oid; }
+                });
+            }
+
+            if (bestId && pos[bestId]) {
+                const ref = pos[bestId];
+                const refH = nH(bestId);
+                const noteW = nW(nid);
+                const refW = nW(bestId);
+                // Place below the reference brick, centered horizontally
+                const noteX = ref.x + (refW - noteW) / 2;
+                const noteY = ref.y + refH + GAP;
+
+                pos[nid] = { x: noteX, y: noteY };
+
+                // Check for overlap with existing nodes and push down if needed
+                let safeY = noteY;
+                const noteH = nH(nid);
+                allPlaced.forEach(oid => {
+                    if (oid === nid) return;
+                    const op = pos[oid];
+                    if (Math.abs(op.x - noteX) < Math.max(noteW, nW(oid)) + GAP) {
+                        if (safeY < op.y + nH(oid) + GAP && safeY + noteH + GAP > op.y) {
+                            safeY = op.y + nH(oid) + GAP;
+                        }
+                    }
+                });
+                pos[nid].y = safeY;
+            } else {
+                // No reference — place at bottom-left
+                pos[nid] = { x: (layerX[0] || 0) + offsetX, y: viewCy + 400 + [...noteIds].indexOf(nid) * 120 };
+            }
+            allPlaced.push(nid);
+        });
+
+        // ── 9. Snap to grid ─────────────────────────────────────────────
+        Object.values(pos).forEach(p => {
+            p.x = Math.round(p.x / snap) * snap;
+            p.y = Math.round(p.y / snap) * snap;
+        });
+
+        // ── 10. Apply positions with smooth animation ───────────────────
         Object.entries(pos).forEach(([nid, p]) => {
             const node = nodes[nid]; if (!node) return;
             node.x = p.x; node.y = p.y;
