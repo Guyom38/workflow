@@ -79,6 +79,10 @@ Object.assign(WorkflowEditor.prototype, {
             subflowStartPorts: extraData?.subflowStartPorts ?? null,
             subflowEndPorts:   extraData?.subflowEndPorts   ?? null,
             formData:          extraData?.formData           ?? null,
+            paramValues:       extraData?.paramValues        ?? {},
+            delay:             extraData?.delay              ?? 1000,
+            operatorOp:        extraData?.operatorOp         ?? 'add',
+            conditionExpr:     extraData?.conditionExpr      ?? '',
         };
 
         const el = document.createElement('div');
@@ -162,6 +166,23 @@ Object.assign(WorkflowEditor.prototype, {
             if (el) {
                 const labelInput = el.querySelector('.node-label-input');
                 if (labelInput) label = labelInput.value;
+                // Capture les valeurs en cours dans le DOM
+                if (node.type === 'timing') {
+                    const delayInput = el.querySelector('.timing-delay-input');
+                    if (delayInput) node.delay = parseInt(delayInput.value, 10) || 1000;
+                }
+                if (node.type === 'operator') {
+                    const opSelect = el.querySelector('.operator-select');
+                    if (opSelect) node.operatorOp = opSelect.value;
+                }
+                if (node.type === 'condition') {
+                    const condInput = el.querySelector('.condition-expr-input');
+                    if (condInput) node.conditionExpr = condInput.value;
+                }
+                if (node.type === 'subflow') {
+                    const sfName = el.querySelector('.subflow-name');
+                    if (sfName) label = sfName.value;
+                }
             }
             nodesData[node.id] = { ...node, label };
         });

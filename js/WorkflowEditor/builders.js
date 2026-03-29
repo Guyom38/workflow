@@ -228,15 +228,25 @@ Object.assign(WorkflowEditor.prototype, {
         } else if (type === 'subflow_end') {
             bodyHTML = `<p class="text-[0.62rem] text-slate-500 italic text-center py-1">↓ Sortie vers le workflow parent</p>`;
         } else if (type === 'operator') {
-            bodyHTML = `<select class="node-input mb-2">
-                <option value="add">Addition (+)</option><option value="sub">Soustraction (-)</option>
-                <option value="mul">Multiplication (*)</option><option value="div">Division (/)</option>
+            const op = extraData?.operatorOp || 'add';
+            bodyHTML = `<select class="node-input mb-2 operator-select mousedown-stop">
+                <option value="add"${op==='add'?' selected':''}>Addition (+)</option>
+                <option value="sub"${op==='sub'?' selected':''}>Soustraction (-)</option>
+                <option value="mul"${op==='mul'?' selected':''}>Multiplication (*)</option>
+                <option value="div"${op==='div'?' selected':''}>Division (/)</option>
+                <option value="mod"${op==='mod'?' selected':''}>Modulo (%)</option>
+                <option value="concat"${op==='concat'?' selected':''}>Concaténation</option>
             </select>`;
         } else if (type === 'timing') {
+            const delay = extraData?.delay ?? 1000;
             bodyHTML = `<div class="flex items-center gap-2">
-                <input type="number" class="node-input" value="1000" style="width:80px">
+                <input type="number" class="node-input timing-delay-input mousedown-stop" value="${delay}" style="width:80px" min="0">
                 <span class="text-xs text-slate-400">ms</span>
             </div>`;
+        } else if (type === 'condition') {
+            const expr = (extraData?.conditionExpr || '').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+            bodyHTML = `<input type="text" class="node-input condition-expr-input mousedown-stop mb-1" value="${expr}" placeholder="Expression (ex: data.get('status') == 'ok')">
+            <p class="text-[0.58rem] text-slate-600 italic">Évalue l'expression sur le dict data</p>`;
         }
 
         // Résolution des ports : python/process/variable les gèrent eux-mêmes ; subflow/start/end ont des ports dynamiques

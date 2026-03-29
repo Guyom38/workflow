@@ -84,5 +84,34 @@ Le nom est `_run_<safe(nodeId)>` (basé sur le nodeId, toujours unique). L'appel
 - `FormEditor.js` — `FormEditor` : éditeur visuel de formulaires dans une modal ; composants drag & drop sur canvas ; `toPythonFormCode()` génère du PyQt5 ; `toJSON()` / `fromJSON()` pour sérialisation
 - `minimap.js` — `MiniMap` : canvas 2D représentant les nœuds à l'échelle, cliquable pour naviguer
 
+### Propriétés supplémentaires des nœuds
+- `paramValues` : valeurs saisies par l'utilisateur dans `ParamModal` (fallback pour les paramètres non connectés)
+- `delay` : délai en ms pour les nœuds `timing` (défaut : 1000)
+- `operatorOp` : opération pour les nœuds `operator` (`add`, `sub`, `mul`, `div`, `mod`, `concat`)
+- `conditionExpr` : expression Python évaluée par les nœuds `condition` (ex: `data.get('status') == 'ok'`)
+
+### Vérification pré-export (`app.js` → `verifyWorkflow()`)
+Bouton « Vérifier » dans la toolbar → appelle `Exporter.validate()` enrichi :
+- Nœud DÉPART présent et connecté
+- Scripts/processus chargés
+- Ports requis alimentés (connexion ou `paramValues`)
+- Compatibilité clés IN/OUT entre briques connectées
+- Variables non connectées, sous-processus vides
+- Détection de cycles (`_detectCycle` DFS)
+- Nœuds sans déclencheur entrant
+
+Le modal affiche les résultats avec 3 niveaux (erreur/warning/info). Clic sur une entrée → centre la caméra sur le nœud concerné.
+
+### Export Python amélioré
+- Nœuds désactivés → `monitor.skip_node()` automatique
+- Nœuds `condition` → évalue `conditionExpr` et branche les nœuds suivants (ports `t`/`f`)
+- Nœuds `operator` → opérations arithmétiques/concaténation
+- Nœuds `timing` → `time.sleep()` avec la valeur configurée
+- Nœuds `loop` → itère sur la liste d'entrée
+- Nœuds `api` → appel HTTP via `requests`
+- `paramValues` utilisés comme fallback pour les paramètres non connectés
+- Vérification venv au lancement + support `--input-file`
+- `setup.bat` : vérifie le script .py, lance automatiquement le workflow
+
 ### Raccourcis clavier (`app.js`)
 `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` (undo/redo), `Ctrl+A` (tout sélectionner), `Ctrl+C/X/V` (copier/couper/coller). Le contexte actif (main ou modal) est détecté via la visibilité de `#subflow-modal`.

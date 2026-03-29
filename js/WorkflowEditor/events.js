@@ -171,6 +171,29 @@ Object.assign(WorkflowEditor.prototype, {
         // ── Variable ──────────────────────────────────────────────────────────
         if (node?.type === 'variable') this._attachVariableEvents(nodeEl, id);
 
+        // ── Timing / Operator / Condition ────────────────────────────────────
+        const timingInput = nodeEl.querySelector('.timing-delay-input');
+        if (timingInput) {
+            timingInput.addEventListener('input', () => {
+                node.delay = parseInt(timingInput.value, 10) || 0;
+                this._notifyChange();
+            });
+        }
+        const opSelect = nodeEl.querySelector('.operator-select');
+        if (opSelect) {
+            opSelect.addEventListener('change', () => {
+                node.operatorOp = opSelect.value;
+                this._notifyChange();
+            });
+        }
+        const condInput = nodeEl.querySelector('.condition-expr-input');
+        if (condInput) {
+            condInput.addEventListener('input', () => {
+                node.conditionExpr = condInput.value;
+                this._notifyChange();
+            });
+        }
+
         // Ports de sortie (recâblés après rebuild du body)
         nodeEl.querySelectorAll('.port-out').forEach(port => {
             port.addEventListener('mousedown', (e) => {

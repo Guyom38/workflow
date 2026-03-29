@@ -173,6 +173,119 @@ function loadWorkflow(data) {
     statusBar.markSaved(new Date(data._autosaveAt || data.savedAt || Date.now()));
 }
 
+// ── Vérification ─────────────────────────────────────────────────────────────
+
+function verifyWorkflow() {
+    const data       = mainEditor.toJSON(currentWorkflowName);
+    const validation = Exporter.validate(data);
+
+    const modal    = document.getElementById('verify-modal');
+    const iconEl   = document.getElementById('vm-status-icon');
+    const titleEl  = document.getElementById('vm-title');
+    const subEl    = document.getElementById('vm-subtitle');
+    const bodyEl   = document.getElementById('vm-body');
+    const exportBtn = document.getElementById('vm-export');
+    const closeBtn  = document.getElementById('vm-close');
+    if (!modal) return;
+
+    const errCount  = validation.errors.filter(e => e.level === 'error').length;
+    const warnCount = validation.errors.filter(e => e.level === 'warning').length;
+    const infoCount = validation.errors.filter(e => e.level === 'info').length;
+
+    // Titre + icone
+    if (errCount > 0) {
+        iconEl.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
+        titleEl.textContent = 'Erreurs detectees';
+        titleEl.className = 'text-red-400 font-bold text-base';
+    } else if (warnCount > 0) {
+        iconEl.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+        titleEl.textContent = 'Avertissements';
+        titleEl.className = 'text-amber-400 font-bold text-base';
+    } else {
+        iconEl.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
+        titleEl.textContent = 'Workflow valide';
+        titleEl.className = 'text-emerald-400 font-bold text-base';
+    }
+
+    const nodeCount  = Object.keys(data.nodes || {}).length;
+    const linkCount  = (data.links || []).length;
+    const scriptCount = Object.values(data.nodes || {}).filter(n => (n.type === 'python' || n.type === 'process') && n.scriptContent).length;
+    subEl.textContent = `${nodeCount} briques, ${linkCount} liens, ${scriptCount} scripts charges`;
+
+    // Corps
+    if (validation.errors.length === 0) {
+        bodyEl.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-8 text-center">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.5" class="mb-3">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                <p class="text-emerald-400 font-bold text-sm mb-1">Tout est en ordre !</p>
+                <p class="text-slate-500 text-xs">Le workflow est pret pour l'export Python.</p>
+            </div>`;
+    } else {
+        const levelIcons = {
+            error:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.5" class="shrink-0"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`,
+            warning: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" class="shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`,
+            info:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" class="shrink-0"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`,
+        };
+        const levelColors = { error: 'text-red-300', warning: 'text-amber-200', info: 'text-blue-300' };
+        const levelBg     = { error: 'bg-red-900/20 border-red-800/40', warning: 'bg-amber-900/15 border-amber-800/30', info: 'bg-blue-900/15 border-blue-800/30' };
+
+        bodyEl.innerHTML = `
+            <div class="flex gap-3 mb-3">
+                ${errCount  ? `<span class="text-xs text-red-400 font-bold">${errCount} erreur${errCount>1?'s':''}</span>`  : ''}
+                ${warnCount ? `<span class="text-xs text-amber-400 font-bold">${warnCount} avertissement${warnCount>1?'s':''}</span>` : ''}
+                ${infoCount ? `<span class="text-xs text-blue-400 font-bold">${infoCount} info${infoCount>1?'s':''}</span>` : ''}
+            </div>
+            <div class="flex flex-col gap-1.5">
+                ${validation.errors.map(e => `
+                    <div class="flex items-start gap-2.5 px-3 py-2 rounded-lg border ${levelBg[e.level]}${e.nodeId ? ' cursor-pointer hover:brightness-125 verify-goto-node' : ''}" data-node-id="${e.nodeId || ''}">
+                        ${levelIcons[e.level]}
+                        <span class="text-xs ${levelColors[e.level]} leading-relaxed">${e.message}</span>
+                    </div>
+                `).join('')}
+            </div>`;
+
+        // Clic sur une erreur → centrer sur le nœud
+        bodyEl.querySelectorAll('.verify-goto-node').forEach(el => {
+            el.addEventListener('click', () => {
+                const nid = el.dataset.nodeId;
+                if (!nid || !mainEditor.nodes[nid]) return;
+                const node = mainEditor.nodes[nid];
+                const nodeEl = mainEditor.nodesContainer.querySelector(`#node-${nid}`);
+                // Centrer la caméra sur le nœud
+                const wsRect = mainEditor.workspace.getBoundingClientRect();
+                mainEditor.camera.x = wsRect.width / 2 - node.x * mainEditor.camera.zoom;
+                mainEditor.camera.y = wsRect.height / 2 - node.y * mainEditor.camera.zoom;
+                mainEditor._updateTransform();
+                // Flash le nœud
+                if (nodeEl) {
+                    nodeEl.classList.add('shadow-[0_0_25px_#fbbf24]');
+                    setTimeout(() => nodeEl.classList.remove('shadow-[0_0_25px_#fbbf24]'), 1500);
+                }
+            });
+        });
+    }
+
+    // Bouton export
+    if (validation.valid && validation.hasWarnings) {
+        exportBtn.classList.remove('hidden');
+        exportBtn.onclick = () => { modal.classList.add('hidden'); exportPython(); };
+    } else if (validation.valid && !validation.hasWarnings && validation.errors.length === 0) {
+        exportBtn.classList.remove('hidden');
+        exportBtn.textContent = 'Exporter';
+        exportBtn.onclick = () => { modal.classList.add('hidden'); exportPython(); };
+    } else {
+        exportBtn.classList.add('hidden');
+    }
+
+    closeBtn.onclick = () => modal.classList.add('hidden');
+    document.getElementById('vm-backdrop').onclick = () => modal.classList.add('hidden');
+
+    modal.classList.remove('hidden');
+    closeAllMenus();
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 function openExportMenu() {

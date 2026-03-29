@@ -125,6 +125,17 @@
             </div>
         </div>
 
+        <!-- Vérifier -->
+        <button onclick="verifyWorkflow()"
+            class="px-3 py-1.5 bg-amber-900/60 hover:bg-amber-800 border border-amber-700 text-amber-300 hover:text-white rounded text-sm transition-colors flex items-center gap-1.5"
+            title="Vérifier le workflow avant export">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 11l3 3L22 4"></path>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            Vérifier
+        </button>
+
         <div class="h-6 w-px bg-slate-700 mx-1"></div>
 
         <!-- Variables -->
@@ -507,6 +518,33 @@
 <!-- ══════════════════════════════════════════════════════════════════════════
      MODAL ACTION (confirmation / info)
 ══════════════════════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL VÉRIFICATION
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="verify-modal" class="fixed inset-0 z-[400] hidden flex items-center justify-center p-4">
+    <div id="vm-backdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative bg-slate-900 rounded-xl border border-slate-700 shadow-2xl w-full max-w-lg flex flex-col overflow-hidden" style="max-height:80vh;">
+        <header class="px-5 pt-4 pb-3 border-b border-slate-700 flex items-center gap-3">
+            <div id="vm-status-icon"></div>
+            <div>
+                <h3 id="vm-title" class="text-white font-bold text-base"></h3>
+                <p id="vm-subtitle" class="text-slate-500 text-xs mt-0.5"></p>
+            </div>
+        </header>
+        <div id="vm-body" class="p-4 overflow-y-auto flex-1" style="max-height:55vh;"></div>
+        <div class="px-5 pb-4 flex justify-end gap-2 border-t border-slate-800 pt-3">
+            <button id="vm-export"
+                class="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-sm transition-colors font-medium hidden">
+                Exporter quand meme
+            </button>
+            <button id="vm-close"
+                class="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded text-sm transition-colors">
+                Fermer
+            </button>
+        </div>
+    </div>
+</div>
+
 <div id="action-modal" class="fixed inset-0 z-[400] hidden flex items-center justify-center p-4">
     <div id="am-backdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
     <div class="relative bg-slate-900 rounded-xl border border-slate-700 shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
